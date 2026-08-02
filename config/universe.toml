@@ -1,0 +1,45 @@
+# =============================================================
+#  GENESIS — configuración del universo
+#  Todo parámetro físico vive aquí, fuera del código.
+#  Un archivo inválido falla en el arranque (nunca en runtime).
+# =============================================================
+
+[universe]
+name = "Genesis"
+# Tamaño total del universo (extensión por eje, toro periódico).
+size = { x = 128.0, y = 128.0, z = 128.0 }
+# Delta de tiempo por tick (segundos de simulación).
+dt = 0.016666666666666666
+# Átomos sembrados al arrancar ("big bang" de la simulación).
+initial_atoms = 100000
+# Capacidad del historial de métricas.
+stats_history = 1024
+
+[rng]
+seed = 42
+
+[physics]
+# Radio de colisión de cada partícula (diámetro = 2·radio).
+particle_radius = 0.4
+# Temperatura inicial (define la velocidad térmica del seeding).
+initial_temperature = 300.0
+# Límite de velocidad (seguridad numérica).
+speed_limit = 1000.0
+# Constante térmica efectiva: T = (2/3)·⟨K⟩/thermal_constant.
+thermal_constant = 0.01
+# Constante gravitatoria de referencia (ley futura).
+gravity_constant = 6.674e-11
+
+[systems]
+enable_movement = true
+enable_boundaries = true
+# Las fuerzas LJ (Lennard-Jones) son la interacción principal: la repulsión de
+# corto alcance ya impide la superposición, así que las colisiones por impulso
+# quedan desactivadas por defecto.
+enable_collisions = false
+enable_forces = true
+
+[stats]
+# Observación, no física: histograma de velocidades.
+histogram_bins = 32
+histogram_max_speed = 10.0
