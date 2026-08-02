@@ -29,15 +29,21 @@ speed_limit = 1000.0
 thermal_constant = 0.01
 # Reference gravitational constant (future law).
 gravity_constant = 6.674e-11
+# Thermostat target temperature (kelvin) and relaxation time (ticks).
+thermostat_temperature = 300.0
+thermostat_tau = 20.0
 
 [systems]
 enable_movement = true
 enable_boundaries = true
-# The LJ (Lennard-Jones) forces are the main interaction: the short-range
+# The LJ forces (Lennard-Jones) are the main interaction: the short-range
 # repulsion already prevents overlap, so impulse collisions are disabled by
 # default.
 enable_collisions = false
 enable_forces = true
+# Berendsen thermostat (velocity rescaling) for NVT runs. An instrument, not a
+# law: off by default (NVE conserves energy).
+enable_thermostat = false
 
 [stats]
 # Observation, not physics: velocity histogram.

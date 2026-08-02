@@ -11,6 +11,7 @@ pub mod forces;
 pub mod integrate;
 pub mod movement;
 pub mod structure;
+pub mod thermostat;
 
 pub use aggregate::StatsSystem;
 pub use boundary::BoundarySystem;
@@ -19,3 +20,4 @@ pub use forces::ForceSystem;
 pub use integrate::{PositionDrift, VelocityHalfKick};
 pub use movement::MovementSystem;
 pub use structure::StructureSystem;
+pub use thermostat::ThermostatSystem;

@@ -57,6 +57,12 @@ pub struct PhysicsConfig {
     pub thermal_constant: f64,
     /// Reference gravitational acceleration (future law).
     pub gravity_constant: f64,
+    /// Target temperature of the thermostat (kelvin).
+    #[serde(default = "default_thermostat_temperature")]
+    pub thermostat_temperature: f64,
+    /// Thermostat relaxation time (in ticks).
+    #[serde(default = "default_thermostat_tau")]
+    pub thermostat_tau: f64,
 }
 
 const fn default_particle_radius() -> f64 {
@@ -65,6 +71,14 @@ const fn default_particle_radius() -> f64 {
 
 const fn default_thermal_constant() -> f64 {
     0.01
+}
+
+const fn default_thermostat_temperature() -> f64 {
+    300.0
+}
+
+const fn default_thermostat_tau() -> f64 {
+    20.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +93,10 @@ pub struct SystemsConfig {
     /// Enables intermolecular forces (Lennard-Jones) and velocity Verlet
     /// integration. When active, `enable_movement` is ignored.
     pub enable_forces: bool,
+    /// Enables the Berendsen thermostat (velocity rescaling): drives the
+    /// equipartition temperature toward `physics.thermostat_temperature`.
+    /// It is an **instrument**, not a law (opt-in NVT).
+    pub enable_thermostat: bool,
 }
 
 impl Default for SystemsConfig {
@@ -88,6 +106,7 @@ impl Default for SystemsConfig {
             enable_boundaries: true,
             enable_collisions: false,
             enable_forces: true,
+            enable_thermostat: false,
         }
     }
 }
@@ -133,6 +152,8 @@ impl Config {
                 speed_limit: 1_000.0,
                 thermal_constant: 0.01,
                 gravity_constant: 6.674e-11,
+                thermostat_temperature: 300.0,
+                thermostat_tau: 20.0,
             },
             systems: SystemsConfig::default(),
             stats: StatsConfig::default(),
@@ -237,6 +258,9 @@ speed_limit = 1000.0
 thermal_constant = 0.01
 # Reference gravitational constant (future law).
 gravity_constant = 6.674e-11
+# Thermostat target temperature (kelvin) and relaxation time (ticks).
+thermostat_temperature = 300.0
+thermostat_tau = 20.0
 
 [systems]
 enable_movement = true
@@ -245,6 +269,9 @@ enable_boundaries = true
 # prevents overlap, so impulse collisions are not necessary.
 enable_collisions = false
 enable_forces = true
+# Berendsen thermostat (velocity rescaling) for NVT runs. An instrument, not a
+# law: off by default (NVE conserves energy).
+enable_thermostat = false
 
 [stats]
 # Observation, not physics: velocity histogram.

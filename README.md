@@ -41,6 +41,14 @@ architecture decisions of stage 0 (the foundation).
      normalization and aggregate detection with friends-of-friends
      (`src/analysis/`). `StructureSystem` samples every `stats.structure_interval`
      ticks and the snapshot reports aggregates/monomers/largest/bound pairs.
+- ✅ **Berendsen thermostat** (velocity rescaling, opt-in via
+     `[systems].enable_thermostat`): drives the equipartition temperature to
+     `physics.thermostat_temperature` for NVT runs. It is an instrument, not a
+     law — NVE (energy conservation) remains the default.
+- ✅ **Temperature sweep** (`examples/temperature_sweep.rs`): equilibrates at
+     fixed T and measures structure. Observed: the mixture condenses gradually
+     over ~20–120 K (deep wells C/O/N bind first, shallow H/He evaporate
+     first) — an emergent consequence of the heterogeneous ε wells.
 - ⏳ Visualization: **outside the engine** (console only today).
 
 ```

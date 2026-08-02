@@ -20,7 +20,7 @@ use crate::serialization::{load_universe, save_universe, LoadError, SaveError, U
 use crate::stats::{CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
 use crate::systems::{
     BoundarySystem, CollisionSystem, ForceSystem, MovementSystem, PositionDrift, StatsSystem,
-    StructureSystem, VelocityHalfKick,
+    StructureSystem, ThermostatSystem, VelocityHalfKick,
 };
 use std::fmt;
 use std::path::Path;
@@ -317,6 +317,9 @@ fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
             scheduler.add_system(CollisionSystem::new(cfg));
         }
         scheduler.add_system(VelocityHalfKick);
+        if cfg.systems.enable_thermostat {
+            scheduler.add_system(ThermostatSystem::new(cfg));
+        }
     } else {
         if cfg.systems.enable_movement {
             scheduler.add_system(MovementSystem);
@@ -326,6 +329,9 @@ fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
         }
         if cfg.systems.enable_collisions {
             scheduler.add_system(CollisionSystem::new(cfg));
+        }
+        if cfg.systems.enable_thermostat {
+            scheduler.add_system(ThermostatSystem::new(cfg));
         }
     }
     if cfg.systems.enable_forces {
