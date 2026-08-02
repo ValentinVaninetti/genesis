@@ -1,4 +1,4 @@
-//! `Position`: ubicación de una entidad en el espacio continuo.
+//! `Position`: location of an entity in continuous space.
 
 use crate::ecs::{Component, ComponentId};
 use crate::math::Vec3;

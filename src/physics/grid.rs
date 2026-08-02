@@ -1,28 +1,28 @@
-//! Grid espacial uniforme (broadphase) con condiciones periódicas.
+//! Uniform spatial grid (broadphase) with periodic boundary conditions.
 //!
-//! Detecta pares de partículas a distancia de colisión sin revisar todas las
-//! combinaciones: cada partícula se inserta en una celda y solo se comparan
-//! celdas adyacentes (vecindad de Manhattan 1). El universo es un toro:
-//! las distancias se calculan con la **imagen mínima** y las celdas vecinas
-//! se envuelven alrededor de los bordes.
+//! Detects pairs of particles within collision distance without checking all
+//! combinations: each particle is inserted into a cell and only adjacent
+//! cells are compared (Manhattan-1 neighborhood). The universe is a torus:
+//! distances use the **minimum image** and neighbor cells wrap around the
+//! edges.
 //!
-//! Cada par de partículas candidatas se reporta **exactamente una vez**, incluso
-//! en ejes degenerados de una sola celda, gracias a la dirección canónica.
+//! Each candidate pair of particles is reported **exactly once**, even on
+//! degenerate single-cell axes, thanks to the canonical direction.
 
 use crate::math::Vec3;
 
-/// Partícula compacta para el grid.
+/// Compact particle for the grid.
 #[derive(Debug, Clone, Copy)]
 pub struct Particle {
-    /// Índice de entidad (para aplicar los resultados en el `World`).
+    /// Entity index (to apply the results in the `World`).
     pub index: u32,
     pub pos: Vec3,
     pub vel: Vec3,
     pub mass: f64,
 }
 
-/// Par de partículas candidatas a colisión, con la normal unitaria (imagen
-/// mínima) que apunta de la partícula `b` hacia la `a`.
+/// Pair of candidate collision particles, with the unit normal (minimum
+/// image) pointing from particle `b` towards `a`.
 #[derive(Debug, Clone, Copy)]
 pub struct Pair {
     pub a: usize,
@@ -30,10 +30,10 @@ pub struct Pair {
     pub normal: Vec3,
 }
 
-/// Celda vacía / fin de lista encadenada.
+/// Empty cell / end of linked list.
 const EMPTY: u32 = u32::MAX;
 
-/// Las 27 direcciones de la vecindad de Manhattan 1.
+/// The 27 directions of the Manhattan-1 neighborhood.
 const ALL_OFFSETS: [(i32, i32, i32); 27] = [
     (-1, -1, -1), (-1, -1, 0), (-1, -1, 1),
     (-1, 0, -1), (-1, 0, 0), (-1, 0, 1),
@@ -46,24 +46,24 @@ const ALL_OFFSETS: [(i32, i32, i32); 27] = [
     (1, 1, -1), (1, 1, 0), (1, 1, 1),
 ];
 
-/// Índice espacial uniforme, reconstruible por tick.
+/// Uniform spatial index, rebuildable per tick.
 pub struct SpatialGrid {
     dims: (u32, u32, u32),
     cell: Vec3,
     world_size: Vec3,
-    /// Cabeza de la lista encadenada por celda.
+    /// Head of the linked list per cell.
     heads: Vec<u32>,
-    /// Celdas con partículas en el build actual (para reset parcial).
+    /// Cells with particles in the current build (for partial reset).
     touched: Vec<u32>,
-    /// Siguiente partícula por slot.
+    /// Next particle per slot.
     next: Vec<u32>,
     chain: Vec<u32>,
     nchain: Vec<u32>,
 }
 
 impl SpatialGrid {
-    /// Crea un grid que cubre `world_size` con celdas de al menos `min_cell`
-    /// por eje (las celdas reales pueden ser más grandes, nunca más chicas).
+    /// Creates a grid covering `world_size` with cells of at least `min_cell`
+    /// per axis (the real cells may be larger, never smaller).
     pub fn new(world_size: Vec3, min_cell: f64) -> Self {
         let ncell = |size: f64| ((size / min_cell).floor()).max(1.0) as u32;
         let (nx, ny, nz) = (ncell(world_size.x), ncell(world_size.y), ncell(world_size.z));
@@ -85,17 +85,17 @@ impl SpatialGrid {
         }
     }
 
-    /// Celdas por eje.
+    /// Cells per axis.
     pub fn dims(&self) -> (u32, u32, u32) {
         self.dims
     }
 
-    /// Celdas con partículas en el último build.
+    /// Cells with particles in the last build.
     pub fn touched_cells(&self) -> usize {
         self.touched.len()
     }
 
-    /// Reconstruye el índice espacial para `particles`.
+    /// Rebuilds the spatial index for `particles`.
     pub fn build(&mut self, particles: &[Particle]) {
         for &ci in &self.touched {
             self.heads[ci as usize] = EMPTY;
@@ -112,10 +112,10 @@ impl SpatialGrid {
         }
     }
 
-    /// Detecta los pares de partículas a distancia menor que `cutoff`.
+    /// Detects the pairs of particles at distance smaller than `cutoff`.
     ///
-    /// Dos partículas son candidatas si su distancia en el toro es `< cutoff`.
-    /// Cada par se reporta exactamente una vez.
+    /// Two particles are candidates if their distance on the torus is `<
+    /// cutoff`. Each pair is reported exactly once.
     pub fn neighbors(&mut self, particles: &[Particle], cutoff: f64, out: &mut Vec<Pair>) {
         let cd2 = cutoff * cutoff;
         out.clear();
@@ -123,14 +123,14 @@ impl SpatialGrid {
             Self::gather(&self.next, self.heads[ci as usize], &mut self.chain);
             let (cx, cy, cz) = self.decode(ci);
 
-            // Pares dentro de la propia celda.
+            // Pairs within the same cell.
             for i in 0..self.chain.len() {
                 for j in (i + 1)..self.chain.len() {
                     self.check_pair(particles, self.chain[i], self.chain[j], cd2, out);
                 }
             }
 
-            // Pares con celdas vecinas (cada par, una sola vez).
+            // Pairs with neighbor cells (each pair, only once).
             for &(dx, dy, dz) in &ALL_OFFSETS {
                 if dx == 0 && dy == 0 && dz == 0 {
                     continue;
@@ -153,10 +153,10 @@ impl SpatialGrid {
     }
 
     // ------------------------------------------------------------------
-    // Internos
+    // Internals
     // ------------------------------------------------------------------
 
-    /// Recorre la lista encadenada desde `head` volcándola en `buf`.
+    /// Walks the linked list from `head` dumping it into `buf`.
     fn gather(next: &[u32], head: u32, buf: &mut Vec<u32>) {
         buf.clear();
         let mut cur = head;
@@ -183,7 +183,7 @@ impl SpatialGrid {
         }
         let d = d2.sqrt();
         if d <= f64::EPSILON {
-            return; // superposición exacta: normal indefinida
+            return; // exact overlap: undefined normal
         }
         out.push(Pair {
             a: sa as usize,
@@ -192,7 +192,7 @@ impl SpatialGrid {
         });
     }
 
-    /// Celda (ix, iy, iz) de una posición, con envoltorio periódico.
+    /// Cell (ix, iy, iz) of a position, with periodic wrapping.
     fn cell_of(&self, pos: Vec3) -> (u32, u32, u32) {
         let axis = |v: f64, period: f64, c: f64, n: u32| {
             let u = (v + 0.5 * period).rem_euclid(period);
@@ -231,15 +231,15 @@ impl SpatialGrid {
         self.encode(ix, iy, iz)
     }
 
-    /// Versión canónica de un offset: los ejes degenerados (una sola celda) se
-    /// reducen a 0 y la dirección se normaliza con el primer componente no
-    /// nulo positivo.
+    /// Canonical version of an offset: degenerate axes (a single cell) are
+    /// reduced to 0 and the direction is normalized with the first non-zero
+    /// component positive.
     ///
-    /// Cada par de celdas distinto se procesa exactamente una vez: para el par
-    /// `{A, B}` existe un único offset que va de `A` a `B`, y el grid solo lo
-    /// usa cuando coincide con esta forma canónica. En toros degenerados varios
-    /// offsets envuelven hacia la misma celda; el canónico elimina los
-    /// redundantes.
+    /// Each distinct cell pair is processed exactly once: for the pair
+    /// `{A, B}` there is a single offset going from `A` to `B`, and the grid
+    /// only uses it when it matches this canonical form. In degenerate tori
+    /// several offsets wrap to the same cell; the canonical one removes the
+    /// redundant ones.
     fn canonical_offset(&self, o: (i32, i32, i32)) -> (i32, i32, i32) {
         let dims = [self.dims.0, self.dims.1, self.dims.2];
         let mut d = [o.0, o.1, o.2];
@@ -263,8 +263,8 @@ impl SpatialGrid {
     }
 }
 
-/// Imagen mínima: la diferencia entre dos posiciones, mapeada al rango
-/// `[-size/2, size/2)` por eje (toro periódico de período `size`).
+/// Minimum image: the difference between two positions, mapped to the range
+/// `[-size/2, size/2)` per axis (periodic torus of period `size`).
 pub fn min_image(delta: Vec3, size: Vec3) -> Vec3 {
     Vec3::new(
         delta.x - size.x * (delta.x / size.x).round(),
@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn grid_coincide_con_fuerza_bruta() {
+    fn grid_matches_brute_force() {
         let world_size = Vec3::new(64.0, 64.0, 64.0);
         let radius = 1.0;
         let mut rng = Rng::new(1234);
@@ -323,9 +323,9 @@ mod tests {
     }
 
     #[test]
-    fn toro_degenerado_no_duplica_ni_pierde() {
-        // z delgado obliga a nz = 1: las envolturas en z caen en la misma celda
-        // y las distancias cruzan el borde periódico.
+    fn degenerate_torus_does_not_duplicate_or_lose() {
+        // Thin z forces nz = 1: the wraps in z fall into the same cell and the
+        // distances cross the periodic border.
         let world_size = Vec3::new(16.0, 16.0, 2.0);
         let radius = 0.6;
         assert_eq!(SpatialGrid::new(world_size, 2.0 * radius).dims().2, 1);
@@ -343,8 +343,8 @@ mod tests {
     }
 
     #[test]
-    fn universo_una_sola_celda() {
-        // Min_celda mayor que el mundo: todo cae en una única celda.
+    fn single_cell_universe() {
+        // Min_cell larger than the world: everything falls into a single cell.
         let world_size = Vec3::new(3.0, 3.0, 3.0);
         let radius = 5.0;
         let particles: Vec<Particle> = vec![
@@ -356,9 +356,9 @@ mod tests {
     }
 
     #[test]
-    fn normal_minima_image_es_correcta() {
-        // Dos partículas casi opuestas a través del borde periódico:
-        // a ≡ +33 (por envoltura) y b = +31.5, a una distancia de 1.5.
+    fn minimum_image_normal_is_correct() {
+        // Two particles almost opposite across the periodic border:
+        // a ≡ +33 (by wrapping) and b = +31.5, at a distance of 1.5.
         let size = Vec3::new(64.0, 64.0, 64.0);
         let a = Vec3::new(-31.0, 0.0, 0.0);
         let b = Vec3::new(31.5, 0.0, 0.0);

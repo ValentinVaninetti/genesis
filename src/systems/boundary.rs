@@ -1,8 +1,7 @@
-//! `BoundarySystem` — demo de arquitectura.
+//! `BoundarySystem` — architecture demo.
 //!
-//! Envuelve las posiciones dentro del volumen del universo (condición de
-//! contorno periódica). Demuestra lectura de un **recurso** (`Config`) desde
-//! un sistema.
+//! Wraps positions inside the volume of the universe (periodic boundary
+//! condition). Demonstrates reading a **resource** (`Config`) from a system.
 
 use crate::config::Config;
 use crate::scheduler::{Access, System, SystemContext};

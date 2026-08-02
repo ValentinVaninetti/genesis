@@ -1,22 +1,22 @@
-//! Scheduler: orden de ejecución de los sistemas.
+//! Scheduler: execution order of the systems.
 //!
-//! El scheduler ejecuta los sistemas **en el orden en que se registraron**.
-//! Nada queda oculto: cada sistema declara su acceso ([`Access`]) y el
-//! scheduler lo usa para:
+//! The scheduler runs systems **in the order they were registered**. Nothing
+//! is hidden: each system declares its access ([`Access`]) and the scheduler
+//! uses it to:
 //!
-//! 1. Validar que no existan dependencias no declaradas.
-//! 2. Calcular *etapas* ([`Stage`]): conjuntos de sistemas sin conflicto que,
-//!    en el futuro, podrán ejecutarse en paralelo con préstamos disjuntos.
-//! 3. Exponer el plan de ejecución para inspección y pruebas.
+//! 1. Validate that there are no undeclared dependencies.
+//! 2. Compute *stages* ([`Stage`]): conflict-free sets of systems that, in the
+//!    future, may run in parallel with disjoint borrows.
+//! 3. Expose the execution plan for inspection and tests.
 
 mod system;
 
 pub use system::{Access, System, SystemContext};
 
-/// Un grupo de sistemas sin conflictos de acceso entre sí.
+/// A group of systems with no access conflicts among them.
 #[derive(Debug, Clone, Default)]
 pub struct Stage {
-    /// Índices en `Scheduler::systems`.
+    /// Indices into `Scheduler::systems`.
     pub systems: Vec<usize>,
 }
 
@@ -30,12 +30,12 @@ impl Stage {
     }
 }
 
-/// Scheduler secuencial con análisis de etapas.
+/// Sequential scheduler with stage analysis.
 pub struct Scheduler {
     systems: Vec<Box<dyn System>>,
     staged: Vec<Stage>,
     dirty: bool,
-    /// Ejecuciones acumuladas (sistemas totales).
+    /// Cumulative executions (total systems run).
     executions: u64,
 }
 
@@ -55,18 +55,18 @@ impl Scheduler {
         }
     }
 
-    /// Registra un sistema al final del schedule.
+    /// Registers a system at the end of the schedule.
     pub fn add_system(&mut self, system: impl System + 'static) {
         self.systems.push(Box::new(system));
         self.dirty = true;
     }
 
-    /// Sistemas registrados (en orden).
+    /// Registered systems (in order).
     pub fn systems(&self) -> &[Box<dyn System>] {
         &self.systems
     }
 
-    /// Recalcula el plan de etapas si hace falta.
+    /// Recomputes the stage plan if needed.
     pub fn plan(&mut self) -> &[Stage] {
         if self.dirty || self.staged.is_empty() {
             self.staged = compute_stages(&self.systems);
@@ -75,11 +75,11 @@ impl Scheduler {
         &self.staged
     }
 
-    /// Ejecuta todos los sistemas **en el orden en que se registraron**.
+    /// Runs all systems **in the order they were registered**.
     ///
-    /// El orden de registro es el orden que el autor del universo eligió; las
-    /// etapas ([`plan`]) se calculan solo para inspección y para habilitar, en
-    /// el futuro, ejecución paralela de etapas sin cambiar la semántica.
+    /// Registration order is the order the universe's author chose; the stages
+    /// ([`plan`]) are computed only for inspection and to enable, in the
+    /// future, parallel execution of stages without changing semantics.
     pub fn run(&mut self, ctx: &mut SystemContext<'_>) {
         for i in 0..self.systems.len() {
             self.systems[i].run(ctx);
@@ -88,17 +88,17 @@ impl Scheduler {
         ctx.stats.systems_run = self.executions;
     }
 
-    /// Total de ejecuciones de sistema acumuladas.
+    /// Total accumulated system executions.
     pub fn executions(&self) -> u64 {
         self.executions
     }
 }
 
-/// Calcula etapas máximas sin conflicto respetando el orden de registro.
+/// Computes maximal conflict-free stages respecting registration order.
 ///
-/// Algoritmo goloso: cada sistema se asigna a la **primera** etapa donde no
-/// compite con ningún miembro actual. Como los conflictos imponen un orden
-/// parcial, esta asignación preserva la semántica del orden original.
+/// Greedy algorithm: each system is assigned to the **first** stage where it
+/// does not compete with any current member. Since conflicts impose a partial
+/// order, this assignment preserves the semantics of the original order.
 pub fn compute_stages(systems: &[Box<dyn System>]) -> Vec<Stage> {
     let mut stages: Vec<Stage> = Vec::new();
     for (i, sys) in systems.iter().enumerate() {
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn conflictos_detectados() {
+    fn detects_conflicts() {
         let w = Access::default().writes::<A>();
         let r = Access::default().reads::<A>();
         assert!(w.conflicts_with(&r));
@@ -183,32 +183,32 @@ mod tests {
     }
 
     #[test]
-    fn etapas_respetan_dependencias() {
-        // SysA escribe A; SysB lee A => conflicto (orden relativo forzado).
-        // SysC escribe B: no compite ni con A ni con B, puede adelantarse.
+    fn stages_respect_dependencies() {
+        // SysA writes A; SysB reads A => conflict (forced relative order).
+        // SysC writes B: it competes with neither A nor B, so it can move ahead.
         let systems: Vec<Box<dyn System>> =
             vec![Box::new(SysA), Box::new(SysB), Box::new(SysC)];
         let stages = compute_stages(&systems);
 
-        // Invariante central: todo sistema que *conflicta* con otro anterior
-        // queda en una etapa posterior (o igual), nunca antes.
+        // Central invariant: any system that *conflicts* with an earlier one
+        // lands in a later (or equal) stage, never an earlier one.
         for i in 0..systems.len() {
             for j in (i + 1)..systems.len() {
                 if systems[i].access().conflicts_with(&systems[j].access()) {
                     let si = stages.iter().position(|s| s.systems.contains(&i)).unwrap();
                     let sj = stages.iter().position(|s| s.systems.contains(&j)).unwrap();
-                    assert!(si <= sj, "dependencia {i}->{j} violada: etapa {si} > {sj}");
+                    assert!(si <= sj, "dependency {i}->{j} violated: stage {si} > {sj}");
                 }
             }
         }
 
-        // Dentro de una etapa no puede haber conflictos.
+        // Within a stage there can be no conflicts.
         for stage in &stages {
             for (k, &x) in stage.systems.iter().enumerate() {
                 for &y in &stage.systems[k + 1..] {
                     assert!(
                         !systems[x].access().conflicts_with(&systems[y].access()),
-                        "etapa con sistemas en conflicto: {x} y {y}"
+                        "stage with conflicting systems: {x} and {y}"
                     );
                 }
             }

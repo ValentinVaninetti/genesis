@@ -1,18 +1,18 @@
-//! Identificador de entidad con generación.
+//! Entity identifier with generation.
 
 use serde::{Deserialize, Serialize};
 
-/// Índice dentro de las tablas del `World`.
+/// Index inside the `World` tables.
 pub type EntityIndex = u32;
-/// Contador de generación para reciclar índices sin colisiones.
+/// Generation counter for recycling indices without collisions.
 pub type EntityGeneration = u32;
 
-/// Identificador único y estable de una entidad.
+/// Unique and stable identifier of an entity.
 ///
-/// Compuesto por un índice y una generación. Cuando una entidad se destruye,
-/// su generación se incrementa: cualquier `EntityId` que apunte al índice con
-/// una generación anterior queda invalidado de forma *detectable* (los accesos
-/// devuelven `None` en lugar de datos corruptos).
+/// Composed of an index and a generation. When an entity is destroyed, its
+/// generation is incremented: any `EntityId` pointing at the index with an
+/// older generation is invalidated in a *detectable* way (accesses return
+/// `None` instead of corrupt data).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct EntityId {
     index: EntityIndex,
@@ -24,17 +24,17 @@ impl EntityId {
         Self { index, generation }
     }
 
-    /// Índice de la entidad dentro del `World`.
+    /// Index of the entity inside the `World`.
     pub const fn index(self) -> EntityIndex {
         self.index
     }
 
-    /// Generación de la entidad.
+    /// Generation of the entity.
     pub const fn generation(self) -> EntityGeneration {
         self.generation
     }
 
-    /// `true` si este id está vigente para la generación actual.
+    /// `true` if this id is valid for the current generation.
     pub fn is_alive(self, world: &crate::ecs::World) -> bool {
         world.is_alive(self)
     }
@@ -57,7 +57,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identidad_por_pares() {
+    fn identity_by_pairs() {
         let a = EntityId::new(3, 0);
         let b = EntityId::new(3, 1);
         assert_ne!(a, b);

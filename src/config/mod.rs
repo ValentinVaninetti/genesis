@@ -1,15 +1,15 @@
-//! Configuración del universo.
+//! Configuration of the universe.
 //!
-//! Todos los parámetros físicos y de arranque viven **fuera del código**, en
-//! TOML. La estructura es 100% tipada y derivada de `serde`, de modo que un
-//! archivo inválido falla en el arranque con un error claro, nunca en runtime
-//! con valores inventados.
+//! All the physical and startup parameters live **outside the code**, in
+//! TOML. The structure is 100% typed and derived from `serde`, so an invalid
+//! file fails at startup with a clear error, never at runtime with invented
+//! values.
 
 use crate::math::Vec3;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Configuración raíz.
+/// Root configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Config {
@@ -24,15 +24,15 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct UniverseConfig {
-    /// Nombre simbólico de la simulación.
+    /// Symbolic name of the simulation.
     pub name: String,
-    /// Tamaño (extensión total) del universo en cada eje.
+    /// Size (total extent) of the universe on each axis.
     pub size: Vec3,
-    /// Delta de tiempo por tick.
+    /// Time delta per tick.
     pub dt: f64,
-    /// Átomos sembrados al arrancar.
+    /// Atoms seeded at startup.
     pub initial_atoms: usize,
-    /// Capacidad máxima de historia de métricas.
+    /// Maximum capacity of the metrics history.
     pub stats_history: usize,
 }
 
@@ -45,17 +45,17 @@ pub struct RngConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct PhysicsConfig {
-    /// Radio de colisión de las partículas.
+    /// Collision radius of the particles.
     #[serde(default = "default_particle_radius")]
     pub particle_radius: f64,
-    /// Temperatura inicial uniforme de los átomos.
+    /// Uniform initial temperature of the atoms.
     pub initial_temperature: f64,
-    /// Límite de velocidad (evita escapes numéricos).
+    /// Speed limit (prevents numeric escapes).
     pub speed_limit: f64,
-    /// Constante térmica efectiva del universo (equipartición: T = 2/3·⟨K⟩/k).
+    /// Effective thermal constant of the universe (equipartition: T = 2/3·⟨K⟩/k).
     #[serde(default = "default_thermal_constant")]
     pub thermal_constant: f64,
-    /// Aceleración gravitatoria de referencia (ley futura).
+    /// Reference gravitational acceleration (future law).
     pub gravity_constant: f64,
 }
 
@@ -70,14 +70,14 @@ const fn default_thermal_constant() -> f64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", default)]
 pub struct SystemsConfig {
-    /// Activa el sistema de movimiento (integración Euler de posición).
+    /// Enables the movement system (Euler integration of position).
     pub enable_movement: bool,
-    /// Activa el sistema de límites (envoltura periódica).
+    /// Enables the boundary system (periodic wrapping).
     pub enable_boundaries: bool,
-    /// Activa el sistema de colisiones elásticas (esferas duras).
+    /// Enables elastic collisions (hard spheres).
     pub enable_collisions: bool,
-    /// Activa las fuerzas intermoleculares (Lennard-Jones) y la integración
-    /// de velocity Verlet. Cuando está activa, `enable_movement` se ignora.
+    /// Enables intermolecular forces (Lennard-Jones) and velocity Verlet
+    /// integration. When active, `enable_movement` is ignored.
     pub enable_forces: bool,
 }
 
@@ -92,15 +92,16 @@ impl Default for SystemsConfig {
     }
 }
 
-/// Configuración de observación (no es física: solo cómo se mide e informa).
+/// Observation configuration (not physics: only how things are measured and
+/// reported).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", default)]
 pub struct StatsConfig {
-    /// Cantidad de bins del histograma de velocidades.
+    /// Number of bins of the velocity histogram.
     pub histogram_bins: usize,
-    /// Velocidad máxima del histograma (rango 0..max).
+    /// Maximum speed of the histogram (range 0..max).
     pub histogram_max_speed: f64,
-    /// Cada cuántos ticks se muestrea la estructura (agregados).
+    /// Every how many ticks the structure (aggregates) is sampled.
     pub structure_interval: u64,
 }
 
@@ -115,7 +116,7 @@ impl Default for StatsConfig {
 }
 
 impl Config {
-    /// Configuración por defecto (equivalente al TOML embebido).
+    /// Default configuration (equivalent to the embedded TOML).
     pub fn default_config() -> Self {
         Self {
             universe: UniverseConfig {
@@ -138,24 +139,25 @@ impl Config {
         }
     }
 
-    /// Carga la configuración desde un archivo TOML.
+    /// Loads the configuration from a TOML file.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let text = std::fs::read_to_string(path.as_ref())?;
         Self::from_toml(&text)
     }
 
-    /// Parsea configuración desde texto TOML.
+    /// Parses configuration from TOML text.
     pub fn from_toml(text: &str) -> Result<Self, ConfigError> {
         Ok(toml::from_str(text)?)
     }
 
-    /// Intenta cargar el archivo; si no existe, usa el default y lo persiste.
+    /// Tries to load the file; if it does not exist, uses the default and
+    /// persists it.
     pub fn from_file_or_default(path: impl AsRef<Path>) -> Self {
         match Self::from_file(path.as_ref()) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!(
-                    "[genesis] configuración no cargada ({}): usando valores por defecto",
+                    "[genesis] configuration not loaded ({}): using default values",
                     e
                 );
                 let c = Self::default_config();
@@ -170,7 +172,7 @@ impl Config {
     }
 }
 
-/// Errores de carga de configuración.
+/// Configuration loading errors.
 #[derive(Debug)]
 pub enum ConfigError {
     Io(std::io::Error),
@@ -192,62 +194,62 @@ impl From<toml::de::Error> for ConfigError {
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigError::Io(e) => write!(f, "error de I/O: {e}"),
-            ConfigError::Parse(e) => write!(f, "TOML inválido: {e}"),
+            ConfigError::Io(e) => write!(f, "I/O error: {e}"),
+            ConfigError::Parse(e) => write!(f, "invalid TOML: {e}"),
         }
     }
 }
 
 impl std::error::Error for ConfigError {}
 
-/// Escribe un archivo de configuración de ejemplo.
+/// Writes an example configuration file.
 pub fn write_example(path: impl AsRef<Path>) -> std::io::Result<()> {
     std::fs::write(path, EXAMPLE_TOML)
 }
 
 pub const EXAMPLE_TOML: &str = r#"# =============================================================
-#  GENESIS — configuración del universo
-#  Todo parámetro físico vive aquí, fuera del código.
+#  GENESIS — universe configuration
+#  Every physical parameter lives here, outside the code.
 # =============================================================
 
 [universe]
 name = "Genesis"
-# Tamaño total del universo (extensión por eje, toro periódico).
+# Total size of the universe (extent per axis, periodic torus).
 size = { x = 128.0, y = 128.0, z = 128.0 }
-# Delta de tiempo por tick (segundos de simulación).
+# Time delta per tick (seconds of simulation).
 dt = 0.016666666666666666
-# Átomos sembrados al arrancar.
+# Atoms seeded at startup.
 initial_atoms = 100000
-# Capacidad del historial de métricas.
+# Capacity of the metrics history.
 stats_history = 1024
 
 [rng]
 seed = 42
 
 [physics]
-# Radio de colisión de cada partícula (diámetro = 2·radio).
+# Collision radius of each particle (diameter = 2·radius).
 particle_radius = 0.4
-# Temperatura inicial (define la velocidad térmica del seeding).
+# Initial temperature (defines the thermal velocity of the seeding).
 initial_temperature = 300.0
-# Límite de velocidad (seguridad numérica).
+# Speed limit (numeric safety).
 speed_limit = 1000.0
-# Constante térmica efectiva: T = (2/3)·⟨K⟩/thermal_constant.
+# Effective thermal constant: T = (2/3)·⟨K⟩/thermal_constant.
 thermal_constant = 0.01
-# Constante gravitatoria de referencia (ley futura).
+# Reference gravitational constant (future law).
 gravity_constant = 6.674e-11
 
 [systems]
 enable_movement = true
 enable_boundaries = true
-# Las fuerzas LJ sustituyen a las esferas duras: la repulsión de corto alcance
-# ya impide la superposición, y las colisiones por impulso no son necesarias.
+# The LJ forces replace the hard spheres: the short-range repulsion already
+# prevents overlap, so impulse collisions are not necessary.
 enable_collisions = false
 enable_forces = true
 
 [stats]
-# Observación, no física: histograma de velocidades.
+# Observation, not physics: velocity histogram.
 histogram_bins = 32
 histogram_max_speed = 10.0
-# Cada cuántos ticks se miden los agregados (estructura emergente).
+# Every how many ticks the aggregates are measured (emergent structure).
 structure_interval = 100
 "#;

@@ -1,14 +1,14 @@
-//! `Bonds`: enlaces entre entidades.
+//! `Bonds`: links between entities.
 //!
-//! Placeholder arquitectónico. Los enlaces **emergen** de las leyes; este
-//! componente es solo el dato que los sistemas de enlace futuros llenarán.
+//! Architectural placeholder. Bonds **emerge** from the laws; this component
+//! is only the data that future bond systems will fill.
 
 use crate::ecs::{Component, ComponentId, EntityId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Bonds {
-    /// Entidades enlazadas a esta.
+    /// Entities bonded to this one.
     pub neighbors: Vec<EntityId>,
 }
 

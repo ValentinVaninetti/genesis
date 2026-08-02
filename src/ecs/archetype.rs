@@ -1,22 +1,22 @@
-//! Arquetipos: agrupación de entidades con idéntico set de componentes.
+//! Archetypes: grouping of entities with an identical set of components.
 //!
-//! Un `Archetype` almacena, en arrays paralelos (SoA), una columna `Vec<T>`
-//! por cada componente del set. Todas las filas están alineadas: la fila `i`
-//! es la misma entidad en todas las columnas.
+//! An `Archetype` stores, in parallel arrays (SoA), a `Vec<T>` column for each
+//! component of the set. All rows are aligned: row `i` is the same entity in
+//! every column.
 
 use crate::ecs::component::ComponentId;
 use crate::ecs::entity::EntityId;
 use crate::ecs::Component;
 use std::any::{Any, TypeId};
 
-/// Identificador de arquetipo dentro del `World`.
+/// Archetype identifier inside the `World`.
 pub type ArchetypeId = u32;
 
-/// Columna tipada genérica (trait object).
+/// Generic typed column (trait object).
 ///
-/// El contrato es mínimo: inspección, bytes en memoria, y el movimiento de una
-/// fila desde otra columna (equivalente a `swap_remove` + `push`). Todo el
-/// downcasting se valida contra `TypeId`/`ComponentId` en el `World`.
+/// The contract is minimal: inspection, bytes in memory, and moving a row
+/// from another column (equivalent to `swap_remove` + `push`). All the
+/// downcasting is validated against `TypeId`/`ComponentId` in the `World`.
 pub trait Column: Any + Send + Sync {
     fn type_id(&self) -> TypeId {
         self.as_any().type_id()
@@ -24,30 +24,30 @@ pub trait Column: Any + Send + Sync {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    /// Cantidad de filas.
+    /// Number of rows.
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Bytes aproximados ocupados por el buffer (capacidad real).
+    /// Approximate bytes occupied by the buffer (real capacity).
     fn bytes(&self) -> usize;
 
-    /// Mueve el valor de la fila `src_row` de `src` al final de esta columna.
+    /// Moves the value at row `src_row` of `src` to the end of this column.
     ///
-    /// Semántica `swap_remove`: la fila `src_row` se elimina de `src` moviendo
-    /// el último elemento a su posición. Todos los `ColumnImpl` de un mismo
-    /// arquetipo deben procesar la misma fila para mantener el alineado.
+    /// `swap_remove` semantics: row `src_row` is removed from `src` by moving
+    /// the last element to its position. All `ColumnImpl`s of the same
+    /// archetype must process the same row to keep the alignment.
     fn push_row(&mut self, src: &mut dyn Column, src_row: usize);
 
-    /// Elimina la fila `row` (semántica `swap_remove`).
+    /// Removes row `row` (`swap_remove` semantics).
     fn swap_remove(&mut self, row: usize);
 
-    /// Vacía la columna conservando la capacidad.
+    /// Empties the column keeping its capacity.
     fn clear(&mut self);
 }
 
-/// Implementación concreta de columna: un `Vec<T>` plano.
+/// Concrete column implementation: a flat `Vec<T>`.
 pub struct ColumnImpl<T> {
     pub(crate) data: Vec<T>,
 }
@@ -82,7 +82,7 @@ where
         let src = src
             .as_any_mut()
             .downcast_mut::<ColumnImpl<T>>()
-            .expect("push_row: tipo de columna no coincide");
+            .expect("push_row: column type does not match");
         let value = src.data.swap_remove(src_row);
         self.data.push(value);
     }
@@ -96,14 +96,14 @@ where
     }
 }
 
-/// Un grupo de entidades con el mismo set de componentes.
+/// A group of entities with the same set of components.
 pub struct Archetype {
     pub(crate) id: ArchetypeId,
-    /// Set de componentes ordenado ascendentemente (clave de unicidad).
+    /// Component set sorted ascending (uniqueness key).
     pub(crate) components: Vec<ComponentId>,
-    /// Columnas SoA, paralelas a `components`.
+    /// SoA columns, parallel to `components`.
     pub(crate) columns: Vec<Box<dyn Column>>,
-    /// Entidades, paralelas a las filas.
+    /// Entities, parallel to the rows.
     pub(crate) entities: Vec<EntityId>,
 }
 
@@ -122,12 +122,12 @@ impl Archetype {
         self.id
     }
 
-    /// Ids de los componentes de este arquetipo (ordenados).
+    /// Component ids of this archetype (sorted).
     pub fn component_ids(&self) -> &[ComponentId] {
         &self.components
     }
 
-    /// Cantidad de entidades.
+    /// Number of entities.
     pub fn len(&self) -> usize {
         self.entities.len()
     }
@@ -136,7 +136,7 @@ impl Archetype {
         self.entities.is_empty()
     }
 
-    /// Posición del componente en el set (búsqueda binaria).
+    /// Position of the component in the set (binary search).
     pub fn position_of(&self, id: ComponentId) -> Option<usize> {
         self.components.binary_search(&id).ok()
     }
@@ -144,14 +144,14 @@ impl Archetype {
     pub(crate) fn column_mut(&mut self, id: ComponentId) -> &mut dyn Column {
         let p = self
             .position_of(id)
-            .unwrap_or_else(|| panic!("columna {:?} ausente en arquetipo {}", id, self.id));
+            .unwrap_or_else(|| panic!("column {:?} missing in archetype {}", id, self.id));
         self.columns[p].as_mut()
     }
 
-    /// Elimina la fila `row` de la lista de entidades (`swap_remove`).
+    /// Removes row `row` from the entity list (`swap_remove`).
     ///
-    /// Devuelve la entidad desplazada a `row`, si la hubo. Nota: las columnas
-    /// de datos deben ya haberse eliminado de forma coherente por el llamador.
+    /// Returns the entity displaced to `row`, if any. Note: the data columns
+    /// must already have been removed coherently by the caller.
     pub(crate) fn remove_row_swap(&mut self, row: usize) -> Option<EntityId> {
         let last = self.entities.len() - 1;
         let displaced = (last != row).then(|| self.entities[last]);
@@ -159,7 +159,7 @@ impl Archetype {
         displaced
     }
 
-    /// Bytes aproximados del arquetipo (columnas + metadatos).
+    /// Approximate bytes of the archetype (columns + metadata).
     pub fn memory_bytes(&self) -> usize {
         let mut total = self
             .entities
@@ -194,13 +194,13 @@ mod tests {
     }
 
     #[test]
-    fn push_row_mueve_y_elimina() {
+    fn push_row_moves_and_removes() {
         let mut a: ColumnImpl<A> = ColumnImpl {
             data: vec![A, A, A],
         };
         let mut b: ColumnImpl<A> = ColumnImpl { data: Vec::new() };
 
-        // mover fila 1 de a -> b (swap_remove: el último va a la posición 1)
+        // move row 1 of a -> b (swap_remove: the last one goes to position 1)
         b.push_row(&mut a, 1);
 
         assert_eq!(a.len(), 2);

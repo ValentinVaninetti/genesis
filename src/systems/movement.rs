@@ -1,9 +1,8 @@
-//! `MovementSystem` — integración Euler de posición.
+//! `MovementSystem` — Euler integration of position.
 //!
-//! Consulta `Position` y `Velocity` y avanza `x += v·dt`. Se usa como
-//! **respaldo** cuando las fuerzas están desactivadas (`enable_forces =
-//! false`): con fuerzas activas el motor usa velocity Verlet
-//! ([`super::integrate`]).
+//! Reads `Position` and `Velocity` and advances `x += v·dt`. It is used as a
+//! **fallback** when forces are disabled (`enable_forces = false`): with
+//! forces enabled the engine uses velocity Verlet ([`super::integrate`]).
 
 use crate::scheduler::{Access, System, SystemContext};
 

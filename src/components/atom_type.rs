@@ -1,14 +1,14 @@
-//! `AtomType`: identidad elemental de un átomo.
+//! `AtomType`: elemental identity of an atom.
 //!
-//! En el universo de Genesis un átomo **no** es un objeto especial: es una
-//! entidad con `AtomType`. El tipo solo aporta masa y un nombre simbólico;
-//! toda química futura debe ser consecuencia de las leyes, no de esta tabla.
+//! In the Genesis universe an atom is **not** a special object: it is an
+//! entity with `AtomType`. The type only provides mass and a symbolic name;
+//! any future chemistry must be a consequence of the laws, not of this table.
 
 use crate::ecs::{Component, ComponentId};
 use serde::{Deserialize, Serialize};
 
-/// Elementos disponibles inicialmente. La tabla es un punto de partida
-/// configurable, no una ley.
+/// Elements initially available. The table is a configurable starting point,
+/// not a law.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum AtomType {
@@ -22,7 +22,7 @@ pub enum AtomType {
 }
 
 impl AtomType {
-    /// Nombre simbólico.
+    /// Symbolic name.
     pub fn symbol(self) -> &'static str {
         match self {
             AtomType::Hydrogen => "H",
@@ -34,7 +34,7 @@ impl AtomType {
         }
     }
 
-    /// Masa atómica (unidades de masa atómica).
+    /// Atomic mass (atomic mass units).
     pub fn mass(self) -> f64 {
         match self {
             AtomType::Hydrogen => 1.008,

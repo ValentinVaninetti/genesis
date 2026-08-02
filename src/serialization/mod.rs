@@ -1,13 +1,13 @@
-//! Persistencia del universo.
+//! Persistence of the universe.
 //!
-//! Un `Snapshot` serializa **todo** el estado: configuración, reloj, RNG,
-//! estadísticas y el `World` completo (entidades con sus componentes y
-//! generaciones preservadas byte a byte). Formato binario (`bincode`) por
-//! velocidad y tamaño; el RNG guardado permite retomar la simulación con
-//! resultados idénticos.
+//! A `Snapshot` serializes **all** the state: configuration, clock, RNG,
+//! statistics and the complete `World` (entities with their components and
+//! generations preserved byte by byte). Binary format (`bincode`) for speed
+//! and size; the saved RNG allows resuming the simulation with identical
+//! results.
 //!
-//! La lista de componentes se genera con la macro `for_each_component!`:
-//! cualquier componente futuro se serializa automáticamente.
+//! The component list is generated with the `for_each_component!` macro: any
+//! future component is serialized automatically.
 
 use crate::components::for_each_component;
 use crate::components::{Acceleration, AtomType, Bonds, Charge, Mass, Position, Velocity};
@@ -19,10 +19,10 @@ use crate::universe::{time::Time, Universe};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Versión del formato de guardado. Incrementar en rompimientos de formato.
+/// Version of the save format. Increment on format breaks.
 pub const FORMAT_VERSION: u32 = 4;
 
-/// Estado global del universo (todo excepto el `World`).
+/// Global state of the universe (everything except the `World`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniverseState {
     pub time: Time,
@@ -30,7 +30,7 @@ pub struct UniverseState {
     pub stats: StatsCollector,
 }
 
-/// Snapshot completo, lista para escribir a disco.
+/// Complete snapshot, ready to write to disk.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Snapshot {
     pub format: u32,
@@ -39,7 +39,7 @@ pub struct Snapshot {
     pub world: Vec<EntitySnapshot>,
 }
 
-/// Datos de una entidad: id generacional + todos sus componentes.
+/// Data of one entity: generational id + all its components.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EntitySnapshot {
     pub index: u32,
@@ -56,7 +56,7 @@ pub struct EntitySnapshot {
 macro_rules! gen_snapshot_impl {
     ($(($t:ident, $name:ident)),* $(,)?) => {
         impl EntitySnapshot {
-            /// Captura una entidad del mundo.
+            /// Captures an entity from the world.
             pub fn capture(world: &World, e: EntityId) -> Self {
                 let mut s = EntitySnapshot {
                     index: e.index(),
@@ -67,7 +67,7 @@ macro_rules! gen_snapshot_impl {
                 s
             }
 
-            /// Restaura la entidad en el mundo (preservando su id).
+            /// Restores the entity in the world (preserving its id).
             pub fn apply(self, world: &mut World) -> EntityId {
                 let e = world.restore_entity(self.index, self.generation);
                 $( if let Some(v) = self.$name {
@@ -80,7 +80,7 @@ macro_rules! gen_snapshot_impl {
 }
 for_each_component!(gen_snapshot_impl);
 
-/// Guarda el universo completo en un archivo binario.
+/// Saves the complete universe to a binary file.
 pub fn save_universe(universe: &Universe, path: impl AsRef<Path>) -> Result<(), SaveError> {
     let world: Vec<EntitySnapshot> = universe
         .world
@@ -104,7 +104,7 @@ pub fn save_universe(universe: &Universe, path: impl AsRef<Path>) -> Result<(), 
     Ok(())
 }
 
-/// Carga un universo guardado.
+/// Loads a saved universe.
 pub fn load_universe(path: impl AsRef<Path>) -> Result<Universe, LoadError> {
     let bytes = std::fs::read(path.as_ref())?;
     let snap: Snapshot = bincode::deserialize(&bytes)?;
@@ -140,8 +140,8 @@ impl From<bincode::Error> for SaveError {
 impl std::fmt::Display for SaveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SaveError::Io(e) => write!(f, "error de I/O: {e}"),
-            SaveError::Encode(e) => write!(f, "error de codificación: {e}"),
+            SaveError::Io(e) => write!(f, "I/O error: {e}"),
+            SaveError::Encode(e) => write!(f, "encoding error: {e}"),
         }
     }
 }
@@ -170,9 +170,9 @@ impl From<bincode::Error> for LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadError::Io(e) => write!(f, "error de I/O: {e}"),
-            LoadError::Decode(e) => write!(f, "error de decodificación: {e}"),
-            LoadError::Format(v) => write!(f, "formato de snapshot incompatible (v{v})"),
+            LoadError::Io(e) => write!(f, "I/O error: {e}"),
+            LoadError::Decode(e) => write!(f, "decoding error: {e}"),
+            LoadError::Format(v) => write!(f, "incompatible snapshot format (v{v})"),
         }
     }
 }
@@ -186,10 +186,10 @@ mod tests {
     use crate::universe::Universe;
 
     #[test]
-    fn roundtrip_binario() {
+    fn binary_roundtrip() {
         let config = Config::default_config();
         let mut u = Universe::new(config.clone());
-        // Unos pocos ticks con algunos movimientos.
+        // A few ticks with some movement.
         u.run_ticks(10);
 
         let tmp = tempfile_path("roundtrip.bin");
@@ -209,7 +209,7 @@ mod tests {
     fn tempfile_path(name: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!("genesis-test-{name}"));
-        // garantizar que no exista un archivo viejo
+        // make sure no old file exists
         if p.exists() {
             std::fs::remove_file(&p).ok();
         }

@@ -1,16 +1,16 @@
-//! Química del universo (reservado).
+//! Chemistry of the universe (reserved).
 //!
-//! **El objetivo explícito del proyecto es que este módulo nunca necesite
-//! existir como código específico.** Si la química emerge, será una
-//! consecuencia de las leyes de `crate::physics`, no de funciones "crear
-//! agua" o "crear enlace".
+//! **The explicit goal of the project is that this module never needs to
+//! exist as specific code.** If chemistry emerges, it will be a consequence of
+//! the laws in `crate::physics`, not of "create water" or "create bond"
+//! functions.
 //!
-//! Este módulo existe para dejar el espacio delimitado y documentar la regla.
+//! This module exists to delimit the space and document the rule.
 
-/// Principios que deben respetar las leyes futuras.
+/// Principles that future laws must respect.
 pub mod principles {
-    /// Una "reacción" nunca debe programarse como tal: debe ser la suma de
-    /// interacciones de bajo nivel (enlace = energía local < umbral, etc.).
+    /// A "reaction" must never be programmed as such: it must be the sum of
+    /// low-level interactions (bond = local energy < threshold, etc.).
     pub const NO_HARDCODED_CHEMISTRY: &str =
-        "está prohibido implementar especies químicas explícitamente";
+        "implementing chemical species explicitly is prohibited";
 }

@@ -1,8 +1,8 @@
-//! Sistemas del universo.
+//! Systems of the universe.
 //!
-//! Cada ley es un `System` independiente, activable/desactivable desde la
-//! configuración. Aquí conviven las leyes físicas (colisiones, fuerzas LJ,
-//! integración de Verlet) con la observación (estadísticas).
+//! Each law is an independent `System`, enable/disable-able from the
+//! configuration. Physical laws (collisions, LJ forces, Verlet integration)
+//! coexist here with observation (statistics).
 
 pub mod aggregate;
 pub mod boundary;

@@ -1,14 +1,14 @@
-//! Recursos globales de la simulación.
+//! Global resources of the simulation.
 //!
-//! Los recursos son valores *singleton* identificados por `TypeId`, como
-//! configuración, contadores globales, tablas, etc. Viven separados del
-//! `World` para que los sistemas puedan pedir ambos a la vez sin conflictos
-//! de borrow y para que el scheduler pueda declarar el acceso a ellos.
+//! Resources are *singleton* values identified by `TypeId`, such as
+//! configuration, global counters, tables, etc. They live separated from the
+//! `World` so that systems can ask for both at once without borrow conflicts
+//! and so the scheduler can declare access to them.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-/// Almacén de recursos tipados.
+/// Store of typed resources.
 #[derive(Default)]
 pub struct Resources {
     map: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
@@ -19,22 +19,22 @@ impl Resources {
         Self::default()
     }
 
-    /// Inserta o reemplaza un recurso.
+    /// Inserts or replaces a resource.
     pub fn insert<T: Any + Send + Sync>(&mut self, value: T) {
         self.map.insert(TypeId::of::<T>(), Box::new(value));
     }
 
-    /// Acceso inmutable a un recurso.
+    /// Immutable access to a resource.
     pub fn get<T: Any + Send + Sync>(&self) -> Option<&T> {
         self.map.get(&TypeId::of::<T>())?.downcast_ref()
     }
 
-    /// Acceso mutable a un recurso.
+    /// Mutable access to a resource.
     pub fn get_mut<T: Any + Send + Sync>(&mut self) -> Option<&mut T> {
         self.map.get_mut(&TypeId::of::<T>())?.downcast_mut()
     }
 
-    /// Remueve un recurso y lo devuelve.
+    /// Removes a resource and returns it.
     pub fn remove<T: Any + Send + Sync>(&mut self) -> Option<T> {
         self.map
             .remove(&TypeId::of::<T>())
@@ -42,12 +42,12 @@ impl Resources {
             .map(|b| *b)
     }
 
-    /// ¿Existe el recurso `T`?
+    /// Does the resource `T` exist?
     pub fn contains<T: Any + Send + Sync>(&self) -> bool {
         self.map.contains_key(&TypeId::of::<T>())
     }
 
-    /// Cantidad de recursos registrados.
+    /// Number of registered resources.
     pub fn len(&self) -> usize {
         self.map.len()
     }
@@ -62,7 +62,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ciclo_de_vida() {
+    fn lifecycle() {
         let mut r = Resources::new();
         assert!(!r.contains::<u32>());
         r.insert(42u32);

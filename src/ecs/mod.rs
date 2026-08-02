@@ -1,29 +1,30 @@
 //! # ECS — Entity Component System
 //!
-//! Núcleo del motor. Implementación **propia**, orientada a datos y basada en
-//! *arquetipos* (agrupación de entidades que comparten exactamente el mismo
-//! conjunto de componentes en arrays contiguos — estructura SoA).
+//! Core of the engine. A bespoke, data-oriented implementation based on
+//! *archetypes* (grouping entities that share exactly the same set of
+//! components in contiguous arrays — SoA layout).
 //!
-//! Decisiones de diseño:
+//! Design decisions:
 //!
-//! - **Arquetipos, no sparse-sets sueltos**: todas las entidades con el mismo
-//!   set de componentes viven en arrays paralelos (`Vec<T>` por componente).
-//!   Esto garantiza localidad de caché, iteración en columnas y alineación
-//!   natural para paralelización por chunks (especialmente importante con
-//!   millones de entidades homogéneas como los átomos).
-//! - **EntityId generacional**: los ids nunca se reutilizan sin incrementar su
-//!   generación, así un handle "zombie" no accede nunca a datos de otra entidad.
-//! - **Sin borrows a través de referencias genéricas a `Any`**: el `unsafe`
-//!   está ausente; el downcasting a columnas tipadas se hace con `downcast_*`
-//!   validado por un registro global de tipos.
-//! - **Sin OOP**: no hay herencia, no hay objetos con métodos de comportamiento.
-//!   Solo datos (`Component`) y lógica separada (`System`).
+//! - **Archetypes, not loose sparse-sets**: all entities with the same set of
+//!   components live in parallel arrays (`Vec<T>` per component). This
+//!   guarantees cache locality, column-wise iteration and natural alignment
+//!   for chunk-based parallelism (especially important with millions of
+//!   homogeneous entities such as atoms).
+//! - **Generational EntityId**: ids are never reused without incrementing
+//!   their generation, so a "zombie" handle never accesses another entity's
+//!   data.
+//! - **No borrows through generic `Any` references**: `unsafe` is absent;
+//!   downcasting to typed columns uses `downcast_*` validated by a global
+//!   type registry.
+//! - **No OOP**: no inheritance, no objects with behavior methods. Only data
+//!   (`Component`) and separated logic (`System`).
 //!
-//! El módulo expone:
-//! - [`entity::EntityId`] — identificador generacional.
-//! - [`component::Component`] — trait que define un tipo de dato.
-//! - [`world::World`] — almacén de arquetipos + consultas + entidades.
-//! - [`resource::Resources`] — recursos globales tipados por `TypeId`.
+//! The module exposes:
+//! - [`entity::EntityId`] — generational identifier.
+//! - [`component::Component`] — trait defining a data type.
+//! - [`world::World`] — archetype store + queries + entities.
+//! - [`resource::Resources`] — global resources typed by `TypeId`.
 
 pub mod archetype;
 pub mod component;

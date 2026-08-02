@@ -1,4 +1,4 @@
-//! `Velocity`: velocidad (vector) de una entidad.
+//! `Velocity`: velocity (vector) of an entity.
 
 use crate::ecs::{Component, ComponentId};
 use crate::math::Vec3;

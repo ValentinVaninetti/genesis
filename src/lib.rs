@@ -1,29 +1,28 @@
 //! # GENESIS
 //!
-//! Motor de simulación de un universo cuyas leyes son pocas, simples y
-//! generales. El objetivo **no** es simular vida ni química: es programar
-//! únicamente las reglas fundamentales y observar si la complejidad emerge
-//! espontáneamente.
+//! Simulation engine for a universe whose laws are few, simple and general.
+//! The goal is **not** to simulate life or chemistry: it is to program only
+//! the fundamental rules and observe whether complexity emerges on its own.
 //!
-//! Módulos principales:
-//! - [`ecs`]: ECS propio, orientado a datos, basado en arquetipos.
-//! - [`universe`]: fachada (`Universe`), reloj y recursos globales.
-//! - [`scheduler`]: orden explícito de los sistemas + análisis de etapas.
-//! - [`components`]: catálogo de componentes (posición, velocidad, energía…).
-//! - [`systems`]: leyes (por ahora, demos de arquitectura).
-//! - [`config`]: toda la física en TOML, fuera del código.
-//! - [`serialization`]: guardar y retomar universos completos.
-//! - [`stats`]: métricas por tick con historial.
-//! - [`math`]: `Vec3` y primitivas geométricas.
-//! - [`physics`] / [`chemistry`]: reservados para leyes futuras.
+//! Main modules:
+//! - [`ecs`]: a bespoke, data-oriented ECS based on archetypes.
+//! - [`universe`]: facade (`Universe`), clock and global resources.
+//! - [`scheduler`]: explicit ordering of systems + stage analysis.
+//! - [`components`]: component catalog (position, velocity, energy…).
+//! - [`systems`]: laws (for now, architecture demos).
+//! - [`config`]: all physics in TOML, outside the code.
+//! - [`serialization`]: save and resume complete universes.
+//! - [`stats`]: per-tick metrics with history.
+//! - [`math`]: `Vec3` and geometric primitives.
+//! - [`physics`] / [`chemistry`]: reserved for future laws.
 //!
-//! # Modelo mental
+//! # Mental model
 //!
-//! Todo lo que existe es una **entidad** (inicialmente solo átomos). Las
-//! entidades solo tienen **datos** (`Component`). Las **leyes** son `System`s
-//! independientes, ordenadas explícitamente por el scheduler. Nada de química,
-//! nada de evolución: solo reglas. Si algo parecido a la vida aparece, será
-//! una consecuencia, nunca una característica.
+//! Everything that exists is an **entity** (initially just atoms). Entities
+//! only have **data** (`Component`). The **laws** are independent `System`s,
+//! explicitly ordered by the scheduler. No chemistry, no evolution: only
+//! rules. If something life-like appears, it will be a consequence, never a
+//! feature.
 
 pub mod analysis;
 pub mod chemistry;

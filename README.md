@@ -1,184 +1,183 @@
 # GENESIS
 
-> Motor de simulación de un universo. **No** un simulador de química. **No** un
-> simulador de biología. Un motor cuyo objetivo es programar únicamente las
-> reglas fundamentales y observar si la complejidad emerge espontáneamente.
+> Simulation engine of a universe. **Not** a chemistry simulator. **Not** a
+> biology simulator. An engine whose goal is to program only the fundamental
+> rules and observe whether complexity emerges spontaneously.
 
-La única pregunta que intenta responder:
+The only question it tries to answer:
 
-> ¿Cuál es el conjunto mínimo de leyes necesario para que aparezca complejidad
-> sin haber sido programada?
+> What is the minimal set of laws needed for complexity to appear without
+> being programmed?
 
-Si algún día aparece algo parecido a la vida, debe ser una consecuencia de las
-reglas, **nunca** una característica implementada explícitamente. Este README
-documenta las decisiones de arquitectura de la etapa 0 (la base).
+If someday something life-like appears, it must be a consequence of the rules,
+**never** a feature implemented explicitly. This README documents the
+architecture decisions of stage 0 (the foundation).
 
 ---
 
-## Estado actual
+## Current state
 
-- ✅ ECS propio y completo (arquetipos, generaciones, consultas paralelas).
-- ✅ Universo (tiempo, RNG serializable, recursos, estadísticas).
-- ✅ Scheduler explícito con análisis de etapas/conflictos.
-- ✅ Configuración 100% en TOML, fuera del código.
-- ✅ Persistencia binaria: guardar y retomar universos idénticos.
-- ✅ Componentes base (posición, velocidad, masa, carga, tipo atómico).
-- ✅ **Colisión elástica** entre partículas (impulso; conserva momento y
-     energía por par), con **grid espacial** uniforme como broad-phase.
-- ✅ **Fuerzas de Lennard-Jones** entre partículas (átomo de cada elemento con
-     σ y ε de fase condensada): repulsión r⁻¹² + atracción r⁻⁶, con mezcla de
-     Lorentz–Berthelot, *switch* quíntico a 0.9·r_c y núcleo endurecido.
-- ✅ **Integrador velocity Verlet** (simpéctico): conserva la energía total
-     (cinética + potencial) al nivel del esquema numérico.
-- ✅ **Energía, temperatura y potencial derivados** (no se almacenan como
-     componentes): `E = K + V`, temperatura por equipartición.
-- ✅ **Siembra en red cúbica** + jitter térmico cuando hay fuerzas (estándar de
-     dinámica molecular): un sembrado aleatorio superpone núcleos y la
-     repulsión r⁻¹² explota numéricamente.
-- ✅ Observado: a baja temperatura el gas **se condensa** espontáneamente (V se
-     vuelve muy negativo, el sistema se autocalienta con el calor latente).
-- ✅ **Análisis de estructura emergente** (observación, no leyes): g(r) con
-     normalización de gas ideal y detección de agregados con friends-of-friends
-     (`src/analysis/`). `StructureSystem` muestrea cada `stats.structure_interval`
-     ticks y el snapshot reporta agregados/monómeros/mayor/pares ligados.
-- ⏳ Visualización: **fuera del motor** (solo consola hoy).
+- ✅ Complete bespoke ECS (archetypes, generations, parallel queries).
+- ✅ Universe (time, serializable RNG, resources, statistics).
+- ✅ Explicit scheduler with stage/conflict analysis.
+- ✅ 100% TOML configuration, outside the code.
+- ✅ Binary persistence: save and resume identical universes.
+- ✅ Base components (position, velocity, mass, charge, atomic type).
+- ✅ **Elastic collision** between particles (impulse; conserves momentum and
+     energy per pair), with a uniform **spatial grid** as broad-phase.
+- ✅ **Lennard-Jones forces** between particles (atom of each element with
+     condensed-phase σ and ε): r⁻¹² repulsion + r⁻⁶ attraction, with
+     Lorentz–Berthelot mixing, quintic *switch* at 0.9·r_c and hardened core.
+- ✅ **Velocity Verlet integrator** (symplectic): conserves total energy
+     (kinetic + potential) at the level of the numerical scheme.
+- ✅ **Derived energy, temperature and potential** (not stored as components):
+     `E = K + V`, temperature by equipartition.
+- ✅ **Cubic lattice seeding** + thermal jitter when there are forces (molecular
+     dynamics standard): a random seeding overlaps nuclei and the r⁻¹²
+     repulsion explodes numerically.
+- ✅ Observed: at low temperature the gas **condenses** spontaneously (V turns
+     very negative, the system self-heats with latent heat).
+- ✅ **Emergent structure analysis** (observation, not laws): g(r) with ideal-gas
+     normalization and aggregate detection with friends-of-friends
+     (`src/analysis/`). `StructureSystem` samples every `stats.structure_interval`
+     ticks and the snapshot reports aggregates/monomers/largest/bound pairs.
+- ⏳ Visualization: **outside the engine** (console only today).
 
 ```
-cargo run --release [config.toml] [ticks] [reportar_cada]
+cargo run --release [config.toml] [ticks] [report_every]
 cargo test
 ```
 
 ---
 
-## Decisiones de arquitectura (y por qué)
+## Architecture decisions (and why)
 
-### 1. ECS propio, no una librería
+### 1. Bespoke ECS, not a library
 
-`bevy_ecs`/`specs` traen décadas de diseño, pero acoplan el proyecto a un
-sistema de tipos ajeno, con errores de compilación difíciles y una migración
-costosa. Un ECS propio (~600 líneas) da control total, cero dependencias
-frágiles y la libertad de evolucionar durante años. Todo el código unsafe está
-**ausente**: los downcasts se validan contra un registro global de tipos.
+`bevy_ecs`/`specs` bring decades of design, but couple the project to a foreign
+type system, with hard compile errors and a costly migration. A bespoke ECS
+(~600 lines) gives full control, zero fragile dependencies and the freedom to
+evolve for years. All unsafe code is **absent**: downcasts are validated
+against a global type registry.
 
-### 2. Arquetipos (no sparse-sets sueltos)
+### 2. Archetypes (not loose sparse-sets)
 
-Todos los átomos comparten el mismo set de componentes → viven en arrays
-contiguos SoA (`Vec<T>` por componente). Esto garantiza:
+All atoms share the same component set → they live in contiguous SoA arrays
+(`Vec<T>` per component). This guarantees:
 
-- **Localidad de caché**: iterar 10M de posiciones recorre memoria contigua.
-- **Alineación natural**: la fila `i` es la misma entidad en todas las columnas,
-  lo que permite paralelizar por chunks sin riesgo de desalineación.
-- **Crecimiento heterogéneo**: cuando aparezcan fotones, moléculas u organismos
-  con sets distintos, cada tipo vivirá en su propio arquetipo. No hay costo por
-  entidades "vacías".
+- **Cache locality**: iterating 10M positions walks contiguous memory.
+- **Natural alignment**: row `i` is the same entity in every column, which
+  allows parallelizing by chunks without misalignment risk.
+- **Heterogeneous growth**: when photons, molecules or organisms with distinct
+  sets appear, each type will live in its own archetype. There is no cost for
+  "empty" entities.
 
-### 3. `EntityId` generacional
+### 3. Generational `EntityId`
 
-Los ids nunca se reutilizan sin incrementar la generación. Un handle "zombie"
-(salvado hace semanas, o de un `Bonds` que apunta a una entidad destruida)
-devuelve `None` en lugar de leer datos corruptos. Es la diferencia entre un
-crash sutil y una simulación que degrada con gracia.
+Ids are never reused without incrementing the generation. A "zombie" handle
+(saved weeks ago, or from a `Bonds` pointing to a destroyed entity) returns
+`None` instead of reading corrupt data. It is the difference between a subtle
+crash and a simulation that degrades gracefully.
 
-### 4. Los componentes son datos puros
+### 4. Components are pure data
 
-`Component` solo exige `Send + Sync + 'static` y un `ComponentId` estable.
-Sin `Clone` obligatorio, sin herencia, sin lógica. Las entidades **no** tienen
-métodos de comportamiento: el comportamiento vive en los `System`.
+`Component` only requires `Send + Sync + 'static` and a stable `ComponentId`.
+No mandatory `Clone`, no inheritance, no logic. Entities **do not** have
+behavior methods: behavior lives in the `System`s.
 
-### 5. Los sistemas declaran su acceso
+### 5. Systems declare their access
 
-Cada `System` declara qué componentes/recursos lee y escribe. El scheduler:
+Each `System` declares which components/resources it reads and writes. The
+scheduler:
 
-- ejecuta en **orden explícito de registro** (nada oculto),
-- calcula **etapas** sin conflictos (que hoy se ejecutan secuencialmente y en
-  el futuro se paralelizarán con préstamos disjuntos),
-- expone el plan para inspección y tests.
+- runs in **explicit registration order** (nothing hidden),
+- computes **conflict-free stages** (which today run sequentially and in the
+  future will be parallelized with disjoint borrows),
+- exposes the plan for inspection and tests.
 
-El paralelismo real de hoy vive **dentro** de cada sistema: consultas
-`par_for_each*_mut` con rayon, exactamente donde el cuello de botella ocurre
-en simulación de partículas.
+The real parallelism of today lives **inside** each system: `par_for_each*_mut`
+queries with rayon, exactly where the bottleneck occurs in particle
+simulation.
 
-### 6. El `Universe` es la única fachada
+### 6. The `Universe` is the only facade
 
-Contiene todo: tiempo, RNG, `World`, recursos, scheduler, estadísticas y
-configuración. La API pública es diminuta (`new`, `tick`, `run_ticks`, `save`,
-`load`). Los sistemas **nunca** ven el `Universe` completo: solo un
-`SystemContext` acotado, lo que impide el acoplamiento accidental.
+It holds everything: time, RNG, `World`, resources, scheduler, statistics and
+configuration. The public API is tiny (`new`, `tick`, `run_ticks`, `save`,
+`load`). Systems **never** see the full `Universe`: only a bounded
+`SystemContext`, which prevents accidental coupling.
 
-### 7. La persistencia es un snapshot total
+### 7. Persistence is a total snapshot
 
-Guarda configuración + reloj + **estado del RNG** + estadísticas + todas las
-entidades con sus ids byte a byte. Un universo guardado retoma con la misma
-secuencia aleatoria y los mismos handles. Formato binario (`bincode`).
+It saves configuration + clock + **RNG state** + statistics + all entities
+with their ids byte by byte. A saved universe resumes with the same random
+sequence and the same handles. Binary format (`bincode`).
 
-### 8. La configuración es el "big bang"
+### 8. The configuration is the "big bang"
 
-Los únicos momentos en que el código crea materia son: (a) el sembrado inicial
-según `config/universe.toml`, y (b) la restauración de snapshots. A partir de
-ahí, **todo** debe emerger de las leyes.
+The only moments the code creates matter are: (a) the initial seeding
+according to `config/universe.toml`, and (b) the restoration of snapshots.
+From there on, **everything** must emerge from the laws.
 
-### 9. Física/química como espacios delimitados
+### 9. Physics/chemistry as delimited spaces
 
-`physics/` ya contiene leyes reales (colisión elástica, grid espacial);
-`chemistry/` documenta la regla de oro: ninguna ley física puede depender de
-química; ninguna "reacción" se programa como tal. Son la frontera que protege
-la pregunta del proyecto.
+`physics/` already contains real laws (elastic collision, spatial grid);
+`chemistry/` documents the golden rule: no physical law can depend on
+chemistry; no "reaction" is programmed as such. They are the boundary that
+protects the project's question.
 
 ---
 
-## Estructura
+## Structure
 
 ```
 src/
-├── main.rs              # CLI: config + ticks + demo de persistencia
+├── main.rs              # CLI: config + ticks + persistence demo
 ├── lib.rs
-├── universe/            # Universe (fachada), Time, siembra inicial
+├── universe/            # Universe (facade), Time, initial seeding
 ├── ecs/                 # entity, component, archetype, world, resource
-├── components/          # catálogo único + registro (macro for_each_component!)
-├── systems/             # leyes: movement, boundaries, collisions, forces, integrate
-├── scheduler/           # System trait, Access, Scheduler, etapas
-├── config/              # Config tipada (TOML)
-├── serialization/       # Snapshot total (bincode)
-├── stats/               # métricas + historial
-├── analysis/            # lentes: g(r) y agregados (observación, no leyes)
+├── components/          # single catalog + registry (for_each_component! macro)
+├── systems/             # laws: movement, boundaries, collisions, forces, integrate
+├── scheduler/           # System trait, Access, Scheduler, stages
+├── config/              # typed Config (TOML)
+├── serialization/       # total snapshot (bincode)
+├── stats/               # metrics + history
+├── analysis/            # lenses: g(r) and aggregates (observation, not laws)
 ├── math/                # Vec3
-├── rng/                 # RNG serializable (xoshiro256++)
-├── physics/             # leyes: colisión elástica, LJ (tablas y switch), grid
-├── chemistry/           # reservado: documenta la prohibición
+├── rng/                 # serializable RNG (xoshiro256++)
+├── physics/             # laws: elastic collision, LJ (tables and switch), grid
+├── chemistry/           # reserved: documents the prohibition
 ```
 
 ---
 
-## Agregar un componente nuevo (1 minuto)
+## Adding a new component (1 minute)
 
-1. Crear `src/components/<nuevo>.rs` con `impl Component for Nuevo { const ID }`.
-2. Añadirlo a la macro `for_each_component!` en `src/components/mod.rs`.
-   - Serialización, registro y snapshots se generan solos.
+1. Create `src/components/<new>.rs` with `impl Component for New { const ID }`.
+2. Add it to the `for_each_component!` macro in `src/components/mod.rs`.
+   - Serialization, registry and snapshots are generated automatically.
 
-> ⚠️ Los `ComponentId` son permanentes: jamás reasignar ni reutilizar.
+> ⚠️ The `ComponentId`s are permanent: never reassign or reuse them.
 
-## Agregar una ley nueva
+## Adding a new law
 
-1. Implementar `System` (name + `access()` + `run`).
-2. Registrarla en `build_schedule` (`src/universe/mod.rs`), activable desde
-   `[systems]` en TOML.
+1. Implement `System` (name + `access()` + `run`).
+2. Register it in `build_schedule` (`src/universe/mod.rs`), enable-able from
+   `[systems]` in TOML.
 
 ---
 
-## Límites honestos
+## Honest limitations
 
-- El scheduler calcula etapas paralelas pero hoy ejecuta secuencialmente; la
-  paralelización global requiere una abstracción de *borrows disjuntos* que se
-  agregará cuando haya más de un sistema de cómputo pesado.
-- Las fuerzas internas son de **esferas de Lennard-Jones** sin conservación de
-  identidad: un choque a gran velocidad entre dos átomos los repele, pero no
-  hay "romper un enlace" porque los enlaces no se representan (todavía).
-- El broad-phase de fuerzas usa el mismo grid uniforme que las colisiones; a
-  densidades extremas el factor de cutoff podría reajustarse.
-- Las colisiones elásticas y las fuerzas coexisten de forma independiente
-  (activables por separado en `[systems]`); no hay aún un formalismo unificado
-  de ambos.
-- La iteración paralela de dos componentes asume sets homogéneos por arquetipo
-  (garantizado por diseño: dentro de un arquetipo todas las filas están
-  alineadas).
-- Las métricas de memoria son aproximaciones del propio ECS (capacidades).
+- The scheduler computes parallel stages but today runs sequentially; global
+  parallelization requires a *disjoint borrows* abstraction that will be added
+  when there is more than one heavy compute system.
+- The internal forces are **Lennard-Jones spheres** without identity
+  conservation: a high-speed impact between two atoms repels them, but there
+  is no "breaking a bond" because bonds are not represented (yet).
+- The force broad-phase uses the same uniform grid as collisions; at extreme
+  densities the cutoff factor could be readjusted.
+- Elastic collisions and forces coexist independently (enable-able separately
+  in `[systems]`); there is not yet a unified formalism for both.
+- The parallel iteration of two components assumes homogeneous sets per
+  archetype (guaranteed by design: within an archetype all rows are aligned).
+- The memory metrics are approximations of the ECS itself (capacities).

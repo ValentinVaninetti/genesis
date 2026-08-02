@@ -1,15 +1,15 @@
-//! Números, vectores y operaciones matemáticas del universo.
+//! Numbers, vectors and mathematical operations of the universe.
 //!
-//! Se mantiene deliberadamente minimalista: un `Vec3` de `f64` es suficiente
-//! para representar posición, velocidad, fuerzas, campos, etc. El espacio se
-//! trata como continuo (nada de celdas discretas a nivel del motor).
+//! Deliberately kept minimal: a `Vec3` of `f64` is enough to represent
+//! position, velocity, forces, fields, etc. Space is treated as continuous
+//! (no discrete cells at the engine level).
 
 use serde::{Deserialize, Serialize};
 
-/// Vector de 3 dimensiones en `f64`.
+/// 3-dimensional vector in `f64`.
 ///
-/// Es la primitiva geométrica de todo el motor. `Copy` + `f64` para poder
-/// meterla directamente en los componentes del ECS sin costos de indirección.
+/// It is the geometric primitive of the whole engine. `Copy` + `f64` so it
+/// can go directly into the ECS components without indirection costs.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Vec3 {
     pub x: f64,
@@ -25,7 +25,7 @@ impl Vec3 {
         Self { x, y, z }
     }
 
-    /// Norma al cuadrado (evita el `sqrt` cuando no hace falta).
+    /// Squared norm (avoids the `sqrt` when it is not needed).
     pub fn length_squared(self) -> f64 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
@@ -50,7 +50,7 @@ impl Vec3 {
         Self::new(self.x * s, self.y * s, self.z * s)
     }
 
-    /// Versor (vector normalizado). Devuelve `ZERO` para el vector nulo.
+    /// Unit vector (normalized vector). Returns `ZERO` for the null vector.
     pub fn normalized(self) -> Self {
         let len = self.length();
         if len <= f64::EPSILON {
@@ -139,7 +139,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn algebra_basica() {
+    fn basic_algebra() {
         let a = Vec3::new(1.0, 2.0, 3.0);
         let b = Vec3::new(4.0, 5.0, 6.0);
         assert_eq!(a + b, Vec3::new(5.0, 7.0, 9.0));
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizacion() {
+    fn normalization() {
         let v = Vec3::new(3.0, 0.0, 0.0).normalized();
         assert_eq!(v, Vec3::new(1.0, 0.0, 0.0));
         assert_eq!(Vec3::ZERO.normalized(), Vec3::ZERO);

@@ -1,12 +1,12 @@
-//! `CollisionSystem` — primera ley física real: colisiones elásticas.
+//! `CollisionSystem` — first real physical law: elastic collisions.
 //!
-//! Detección (broadphase): grid espacial uniforme con imagen mínima sobre el
-//! toro. Interacción: impulso elástico puro (`e = 1`) calculado contra las
-//! velocidades previas a la colisión. La energía no se almacena ni se ajusta:
-//! es una consecuencia de las velocidades, y el impulso la conserva.
+//! Detection (broadphase): uniform spatial grid with minimum image over the
+//! torus. Interaction: pure elastic impulse (`e = 1`) computed against the
+//! pre-collision velocities. Energy is neither stored nor adjusted: it is a
+//! consequence of the velocities, and the impulse conserves it.
 //!
-//! Es una ley **local** y desacoplada: no sabe nada de química, temperatura ni
-//! vida. Solo ve masa, posición y velocidad.
+//! It is a **local**, decoupled law: it knows nothing about chemistry,
+//! temperature or life. It only sees mass, position and velocity.
 
 use crate::components::{Mass, Position, Velocity};
 use crate::config::Config;
@@ -16,16 +16,16 @@ use crate::physics::grid::{Particle, SpatialGrid};
 use crate::scheduler::{Access, System, SystemContext};
 use crate::stats::CollisionCounter;
 
-/// Sistema de colisiones. El grid espacial se reutiliza entre ticks (se
-/// reconstruye por completo en cada `run`), evitando asignaciones por tick.
+/// Collision system. The spatial grid is reused between ticks (it is fully
+/// rebuilt in each `run`), avoiding per-tick allocations.
 pub struct CollisionSystem {
     grid: SpatialGrid,
 }
 
 impl CollisionSystem {
     pub fn new(cfg: &Config) -> Self {
-        // Celdas de al menos el diámetro de colisión: así, dos partículas en
-        // contacto solo pueden vivir en la misma celda o en celdas vecinas.
+        // Cells of at least the collision diameter: thus two particles in
+        // contact can only live in the same cell or in neighbor cells.
         let min_cell = 2.0 * cfg.physics.particle_radius;
         Self {
             grid: SpatialGrid::new(cfg.universe.size, min_cell),
@@ -55,7 +55,7 @@ impl System for CollisionSystem {
         let radius = cfg.physics.particle_radius;
         let capacity = ctx.world.entity_capacity();
 
-        // Fase 1: recolectar las partículas (posición, velocidad, masa).
+        // Phase 1: collect the particles (position, velocity, mass).
         let mut particles: Vec<Particle> = Vec::with_capacity(ctx.world.len());
         ctx.world.for_each3::<Position, Velocity, Mass>(|e, pos, vel, mass| {
             particles.push(Particle {
@@ -69,14 +69,14 @@ impl System for CollisionSystem {
             return;
         }
 
-        // Fase 2: broadphase — grid espacial + pares candidatos.
+        // Phase 2: broadphase — spatial grid + candidate pairs.
         self.grid.build(&particles);
         let mut pairs = Vec::new();
         self.grid.neighbors(&particles, 2.0 * radius, &mut pairs);
 
-        // Fase 3: impulsos de cada par contra las velocidades pre-colisión.
-        // Las aceleraciones simultáneas se acumulan (aproximación estándar de
-        // dinámica molecular); el momento y la energía se conservan por par.
+        // Phase 3: impulses of each pair against the pre-collision velocities.
+        // Simultaneous accelerations accumulate (standard approximation of
+        // molecular dynamics); momentum and energy are conserved per pair.
         let mut dv = vec![Vec3::ZERO; capacity];
         let mut collisions: u64 = 0;
         for &pair in &pairs {
@@ -90,7 +90,7 @@ impl System for CollisionSystem {
             }
         }
 
-        // Fase 4: aplicar los impulsos en paralelo.
+        // Phase 4: apply the impulses in parallel.
         if collisions > 0 {
             ctx.world.par_for_each1_mut::<Velocity>(|e, vel| {
                 vel.0 += dv[e.index() as usize];
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn dos_atomos_intercambian_velocidades() {
+    fn two_atoms_swap_velocities() {
         let mut cfg = Config::default_config();
         cfg.universe.initial_atoms = 0;
         cfg.universe.size = Vec3::new(32.0, 32.0, 32.0);
@@ -151,7 +151,7 @@ mod tests {
         let left = spawn_atom(&mut u, Vec3::new(-1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), 1.0);
         let right = spawn_atom(&mut u, Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0), 1.0);
 
-        // Tras la colisión, las velocidades se intercambian exactamente.
+        // After the collision, the velocities swap exactly.
         let mut swapped = false;
         for _ in 0..2000 {
             u.tick();
@@ -162,11 +162,11 @@ mod tests {
                 break;
             }
         }
-        assert!(swapped, "las velocidades no se intercambiaron");
+        assert!(swapped, "the velocities were not swapped");
     }
 
     #[test]
-    fn colisiones_conservan_energia_y_momento() {
+    fn collisions_conserve_energy_and_momentum() {
         let mut cfg = Config::default_config();
         cfg.universe.initial_atoms = 300;
         cfg.universe.size = Vec3::new(32.0, 32.0, 32.0);
@@ -186,11 +186,11 @@ mod tests {
         let p1 = momentum(&u.world);
         let rel = (e1 - e0).abs() / e0;
         let dp = (p0 - p1).length();
-        assert!(rel < 1e-4, "deriva relativa de energía: {rel:.3e}");
-        assert!(dp < 1e-9 * p0.length().max(1.0), "deriva de momento: {dp:.3e}");
+        assert!(rel < 1e-4, "relative energy drift: {rel:.3e}");
+        assert!(dp < 1e-9 * p0.length().max(1.0), "momentum drift: {dp:.3e}");
         assert!(
             u.stats.snapshot.collisions > 0,
-            "no hubo ninguna colisión en la simulación"
+            "there were no collisions in the simulation"
         );
     }
 }

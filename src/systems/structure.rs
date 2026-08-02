@@ -1,9 +1,10 @@
-//! `StructureSystem` — observación de estructura emergente.
+//! `StructureSystem` — observation of emergent structure.
 //!
-//! Cada `interval` ticks detecta los agregados de átomos (friends-of-friends,
-//! `analysis::clusters`) y guarda el resumen en el recurso `StructureStats`,
-//! que `StatsSystem` copia al snapshot. No es una ley: **no modifica** nada
-//! del mundo; solo mide qué ha producido la física.
+//! Every `interval` ticks it detects the aggregates of atoms
+//! (friends-of-friends, `analysis::clusters`) and stores the summary in the
+//! `StructureStats` resource, which `StatsSystem` copies to the snapshot. It
+//! is not a law: it **modifies nothing** in the world; it only measures what
+//! the physics has produced.
 
 use crate::analysis::clusters;
 use crate::components::{AtomType, Position};
@@ -13,7 +14,7 @@ use crate::physics::grid::Particle;
 use crate::scheduler::{Access, System, SystemContext};
 use crate::stats::StructureStats;
 
-/// Sistema de análisis de estructura.
+/// Structure analysis system.
 pub struct StructureSystem {
     interval: u64,
 }

@@ -1,17 +1,18 @@
-//! Colisión elástica entre dos partículas.
+//! Elastic collision between two particles.
 //!
-//! Función pura: dada la normal unitaria entre dos partículas y sus masas y
-//! velocidades (antes de la colisión), devuelve el cambio de velocidad de cada
-//! una. Conserva momento y energía exactamente (coeficiente de restitución
-//! `e = 1`). Todo el resto (detección, aplicación) vive fuera de este módulo.
+//! Pure function: given the unit normal between two particles and their
+//! masses and velocities (before the collision), returns the velocity change
+//! of each one. Conserves momentum and energy exactly (coefficient of
+//! restitution `e = 1`). Everything else (detection, application) lives
+//! outside this module.
 
 use crate::math::Vec3;
 
-/// Impulso elástico entre dos partículas.
+/// Elastic impulse between two particles.
 ///
-/// - `n` debe ser un versor que apunta de la partícula 2 hacia la 1.
-/// - Devuelve `(Δv1, Δv2)`. Si las partículas se están alejando (`vrel·n ≥ 0`)
-///   o las masas no son positivas, no hay impulso y devuelve ceros.
+/// - `n` must be a unit vector pointing from particle 2 towards particle 1.
+/// - Returns `(Δv1, Δv2)`. If the particles are separating (`vrel·n ≥ 0`)
+///   or the masses are not positive, there is no impulse and it returns zeros.
 pub fn elastic_pair(m1: f64, v1: Vec3, m2: f64, v2: Vec3, n: Vec3) -> (Vec3, Vec3) {
     if m1 <= 0.0 || m2 <= 0.0 {
         return (Vec3::ZERO, Vec3::ZERO);
@@ -21,7 +22,7 @@ pub fn elastic_pair(m1: f64, v1: Vec3, m2: f64, v2: Vec3, n: Vec3) -> (Vec3, Vec
     if vn >= 0.0 {
         return (Vec3::ZERO, Vec3::ZERO);
     }
-    // e = 1: el impulso escalar j = -2·vn / (1/m1 + 1/m2) es positivo aquí.
+    // e = 1: the scalar impulse j = -2·vn / (1/m1 + 1/m2) is positive here.
     let j = -2.0 * vn / (1.0 / m1 + 1.0 / m2);
     let jv = n * j;
     (jv / m1, jv / m2 * -1.0)
@@ -32,8 +33,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn masas_iguales_intercambian_velocidades() {
-        // La normal apunta de la partícula 2 (derecha) hacia la 1 (izquierda).
+    fn equal_masses_swap_velocities() {
+        // The normal points from particle 2 (right) towards particle 1 (left).
         let n = Vec3::new(-1.0, 0.0, 0.0);
         let v1 = Vec3::new(1.0, 0.0, 0.0);
         let v2 = Vec3::new(-1.0, 0.0, 0.0);
@@ -45,35 +46,35 @@ mod tests {
     }
 
     #[test]
-    fn conserva_momento_y_energia() {
+    fn conserves_momentum_and_energy() {
         let m1 = 1.0;
         let m2 = 3.0;
         let v1 = Vec3::new(2.0, -1.0, 0.5);
         let v2 = Vec3::new(0.0, 1.0, -0.5);
-        // vrel·n = -2 < 0: se acercan (la normal apunta hacia la partícula 1).
+        // vrel·n = -2 < 0: they approach (the normal points towards particle 1).
         let n = Vec3::new(-1.0, 0.0, 0.0);
 
         let (d1, d2) = elastic_pair(m1, v1, m2, v2, n);
         let v1p = v1 + d1;
         let v2p = v2 + d2;
 
-        // El impulso realmente ocurre (no es el caso trivial de separación).
+        // The impulse actually happens (not the trivial separating case).
         assert_ne!(d1, Vec3::ZERO);
 
-        // Momento total conservado.
+        // Total momentum conserved.
         let p_before = v1 * m1 + v2 * m2;
         let p_after = v1p * m1 + v2p * m2;
         assert!((p_before - p_after).length() < 1e-12);
 
-        // Energía cinética total conservada.
+        // Total kinetic energy conserved.
         let e_before = 0.5 * m1 * v1.length_squared() + 0.5 * m2 * v2.length_squared();
         let e_after = 0.5 * m1 * v1p.length_squared() + 0.5 * m2 * v2p.length_squared();
         assert!((e_before - e_after).abs() < 1e-12);
     }
 
     #[test]
-    fn alejandose_no_impulsa() {
-        // vrel·n > 0: ya se separan, no hay interacción.
+    fn separating_does_not_impulse() {
+        // vrel·n > 0: already separating, no interaction.
         let (d1, d2) = elastic_pair(
             1.0,
             Vec3::new(1.0, 0.0, 0.0),
@@ -86,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn masa_cero_no_impulsa() {
+    fn zero_mass_does_not_impulse() {
         let (d1, d2) = elastic_pair(0.0, Vec3::new(1.0, 0.0, 0.0), 1.0, Vec3::new(-1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0));
         assert_eq!(d1, Vec3::ZERO);
         assert_eq!(d2, Vec3::ZERO);

@@ -1,59 +1,59 @@
-//! Módulo RNG del universo.
+//! RNG module of the universe.
 //!
-//! Todo número aleatorio de la simulación debe pasar por este único punto.
-//! El RNG es *seedable* y *serializable*: parte del estado del universo, de
-//! modo que una simulación guardada puede reanudarse con resultados
-//! deterministas idénticos.
+//! Every random number of the simulation must go through this single point.
+//! The RNG is *seedable* and *serializable*: it is part of the universe
+//! state, so a saved simulation can resume with identical deterministic
+//! results.
 
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
 
-/// Fuente de aleatoriedad de la simulación.
+/// Randomness source of the simulation.
 ///
-/// `Xoshiro256PlusPlus` es rápido y —clave para la persistencia— serializable
-/// (feature `serde1`), de modo que un universo guardado retoma exactamente la
-/// misma secuencia aleatoria.
+/// `Xoshiro256PlusPlus` is fast and — key for persistence — serializable
+/// (feature `serde1`), so a saved universe resumes exactly the same random
+/// sequence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rng {
     inner: Xoshiro256PlusPlus,
 }
 
 impl Rng {
-    /// Crea un RNG a partir de una semilla entera.
+    /// Creates an RNG from an integer seed.
     pub fn new(seed: u64) -> Self {
         Self {
             inner: Xoshiro256PlusPlus::seed_from_u64(seed),
         }
     }
 
-    /// Un flotante uniforme en `[0, 1)`.
+    /// A uniform float in `[0, 1)`.
     pub fn unit(&mut self) -> f64 {
         rand::Rng::gen_range(&mut self.inner, 0.0..1.0)
     }
 
-    /// Un flotante uniforme en `[lo, hi)`.
+    /// A uniform float in `[lo, hi)`.
     pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.unit()
     }
 
-    /// Un entero uniforme en `[lo, hi]` (inclusivo).
+    /// A uniform integer in `[lo, hi]` (inclusive).
     pub fn int(&mut self, lo: u64, hi: u64) -> u64 {
         rand::Rng::gen_range(&mut self.inner, lo..=hi)
     }
 
-    /// Una muestra de la distribución normal estándar (Box-Muller).
+    /// A sample of the standard normal distribution (Box-Muller).
     ///
-    /// Se usa para el seeding de Maxwell-Boltzmann: si cada componente de la
-    /// velocidad es `N(0, σ)` con `σ = √(k·T/m)`, la rapidez `|v|` sigue la
-    /// distribución de Maxwell-Boltzmann.
+    /// Used for the Maxwell-Boltzmann seeding: if each velocity component is
+    /// `N(0, σ)` with `σ = √(k·T/m)`, the speed `|v|` follows the
+    /// Maxwell-Boltzmann distribution.
     pub fn gaussian(&mut self) -> f64 {
         let u1 = self.unit().max(f64::MIN_POSITIVE);
         let u2 = self.unit();
         (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
     }
 
-    /// Un vector uniformemente distribuido dentro de una caja.
+    /// A vector uniformly distributed inside a box.
     pub fn in_box(&mut self, half_extents: crate::math::Vec3) -> crate::math::Vec3 {
         crate::math::Vec3::new(
             self.range(-half_extents.x, half_extents.x),
@@ -62,7 +62,7 @@ impl Rng {
         )
     }
 
-    /// Acceso directo al generador subyacente para usos avanzados.
+    /// Direct access to the underlying generator for advanced uses.
     pub fn as_rand(&mut self) -> &mut dyn rand::RngCore {
         &mut self.inner
     }
@@ -79,7 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rango_correcto() {
+    fn range_is_correct() {
         let mut r = Rng::new(42);
         for _ in 0..1000 {
             let v = r.unit();
@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn determinista_con_misma_semilla() {
+    fn deterministic_with_same_seed() {
         let mut a = Rng::new(7);
         let mut b = Rng::new(7);
         for _ in 0..100 {

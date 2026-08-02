@@ -1,4 +1,4 @@
-//! `Mass`: masa inercial/gravitatoria de una entidad.
+//! `Mass`: inertial/gravitational mass of an entity.
 
 use crate::ecs::{Component, ComponentId};
 use serde::{Deserialize, Serialize};

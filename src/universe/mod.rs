@@ -1,9 +1,9 @@
-//! `Universe`: fachada de toda la simulación.
+//! `Universe`: facade of the whole simulation.
 //!
-//! Es el único punto de entrada. Contiene todo: tiempo, RNG, configuración,
-//! `World`, recursos, scheduler y estadísticas. Su API es deliberadamente
-//! pequeña (`new`, `tick`, `run_ticks`, `save`, `load`): todo lo demás se
-//! alcanza a través de sus campos públicos.
+//! It is the only entry point. It holds everything: time, RNG, configuration,
+//! `World`, resources, scheduler and statistics. Its API is deliberately small
+//! (`new`, `tick`, `run_ticks`, `save`, `load`): everything else is reached
+//! through its public fields.
 
 pub mod time;
 
@@ -26,7 +26,7 @@ use std::fmt;
 use std::path::Path;
 use std::time::Instant;
 
-/// El universo completo.
+/// The complete universe.
 pub struct Universe {
     pub config: Config,
     pub time: Time,
@@ -39,8 +39,8 @@ pub struct Universe {
 }
 
 impl Universe {
-    /// Crea un universo nuevo a partir de la configuración y siembra la
-    /// población inicial de átomos.
+    /// Creates a new universe from the configuration and seeds the initial
+    /// population of atoms.
     pub fn new(config: Config) -> Self {
         crate::components::register_all();
 
@@ -78,7 +78,7 @@ impl Universe {
         universe
     }
 
-    /// Reconstruye un universo desde un estado guardado (para deserialización).
+    /// Rebuilds a universe from a saved state (for deserialization).
     pub(crate) fn from_state(config: Config, state: UniverseState) -> Self {
         crate::components::register_all();
 
@@ -110,7 +110,7 @@ impl Universe {
         }
     }
 
-    /// Avanza un tick: avanza el reloj y ejecuta el schedule completo.
+    /// Advances one tick: advances the clock and runs the full schedule.
     pub fn tick(&mut self) {
         self.time.advance();
         let start = Instant::now();
@@ -131,40 +131,40 @@ impl Universe {
         self.last_tick = start;
     }
 
-    /// Ejecuta `n` ticks seguidos.
+    /// Runs `n` consecutive ticks.
     pub fn run_ticks(&mut self, n: u64) {
         for _ in 0..n {
             self.tick();
         }
     }
 
-    /// Tiempo de pared transcurrido desde el último tick.
+    /// Wall-clock time elapsed since the last tick.
     pub fn last_tick_elapsed(&self) -> std::time::Duration {
         self.last_tick.elapsed()
     }
 
-    /// Guarda el universo completo en un archivo.
+    /// Saves the complete universe to a file.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), SaveError> {
         save_universe(self, path)
     }
 
-    /// Carga un universo guardado.
+    /// Loads a saved universe.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, LoadError> {
         load_universe(path)
     }
 
-    /// Siembra la población inicial de átomos según la configuración.
+    /// Seeds the initial population of atoms according to the configuration.
     ///
-    /// Esto **no** es una ley del universo: es el "big bang" de la simulación,
-    /// el único momento en que se crea materia desde la configuración. Las
-    /// velocidades se muestrean de una distribución de Maxwell-Boltzmann
-    /// (cada componente ~ Normal(0, √(k·T/m))): la temperatura es un dato de
-    /// entrada del seeding, no un estado del universo.
+    /// This is **not** a law of the universe: it is the "big bang" of the
+    /// simulation, the only moment in which matter is created from the
+    /// configuration. Velocities are sampled from a Maxwell-Boltzmann
+    /// distribution (each component ~ Normal(0, √(k·T/m))): temperature is a
+    /// seeding input, not a state of the universe.
     ///
-    /// Con fuerzas activas se siembra en una **red cúbica** con jitter
-    /// térmico (la inicialización estándar de dinámica molecular): un sembrado
-    /// totalmente aleatorio superpondría núcleos y la repulsión r⁻¹² de
-    /// Lennard-Jones los convertiría en una explosión numérica.
+    /// With forces enabled, seeding uses a **cubic lattice** with thermal
+    /// jitter (the standard initialization of molecular dynamics): a fully
+    /// random seeding would overlap nuclei and the r⁻¹² repulsion of
+    /// Lennard-Jones would turn them into a numerical explosion.
     fn seed_atoms(&mut self) {
         let count = self.config.universe.initial_atoms;
         let temp = self.config.physics.initial_temperature;
@@ -183,8 +183,8 @@ impl Universe {
         }
     }
 
-    /// Sembrado aleatorio uniforme (solo sin fuerzas: sin repulsión de corto
-    /// alcance no hay superposiciones problemáticas).
+    /// Uniform random seeding (only without forces: without short-range
+    /// repulsion there are no problematic overlaps).
     fn seed_random(&mut self, count: usize, temp: f64, k: f64, elements: &[AtomType]) {
         let half = self.config.universe.size.scale(0.5);
         for _ in 0..count {
@@ -192,8 +192,8 @@ impl Universe {
         }
     }
 
-    /// Sembrado en red cúbica con jitter térmico. El conteo se redondea al
-    /// cubo perfecto más cercano por debajo del pedido (`n³ ≤ count`).
+    /// Seeding on a cubic lattice with thermal jitter. The count is rounded to
+    /// the nearest perfect cube below the requested value (`n³ ≤ count`).
     fn seed_lattice(&mut self, count: usize, temp: f64, k: f64, elements: &[AtomType]) {
         let size = self.config.universe.size;
         let n = (count as f64).powf(1.0 / 3.0).floor().max(1.0) as u32;
@@ -218,8 +218,8 @@ impl Universe {
         }
     }
 
-    /// Crea un átomo con posición, elemento, masa, carga, velocidad térmica
-    /// y aceleración nula.
+    /// Creates an atom with position, element, mass, charge, thermal velocity
+    /// and zero acceleration.
     fn spawn_atom(
         &mut self,
         elements: &[AtomType],
@@ -246,7 +246,7 @@ impl Universe {
         self.world.insert::<Acceleration>(e, Acceleration(Vec3::ZERO));
     }
 
-    /// Observables de análisis: partículas compactas + tipos atómicos.
+    /// Analysis observables: compact particles + atomic types.
     fn observable_particles(&self) -> (Vec<Particle>, Vec<AtomType>) {
         let mut particles = Vec::with_capacity(self.world.len());
         let mut types = Vec::with_capacity(self.world.len());
@@ -262,14 +262,14 @@ impl Universe {
         (particles, types)
     }
 
-    /// `g(r)` del estado actual (lente, no ley). `r_max` se recorta a la mitad
-    /// del lado más corto del toro.
+    /// `g(r)` of the current state (a lens, not a law). `r_max` is clipped to
+    /// half of the shortest side of the torus.
     pub fn radial_distribution(&self, r_max: f64, bins: usize) -> crate::analysis::RadialDistribution {
         let (particles, _) = self.observable_particles();
         crate::analysis::radial_distribution(&particles, self.config.universe.size, r_max, bins)
     }
 
-    /// Agregados emergentes del estado actual (friends-of-friends).
+    /// Emergent aggregates of the current state (friends-of-friends).
     pub fn cluster_analysis(&self) -> crate::analysis::ClusterStats {
         let (particles, types) = self.observable_particles();
         crate::analysis::clusters(
@@ -280,11 +280,11 @@ impl Universe {
         )
     }
 
-    /// Resumen de una línea con las métricas más recientes.
+    /// One-line summary with the most recent metrics.
     pub fn status_line(&self) -> String {
         let s = &self.stats.snapshot;
         format!(
-            "tick={} t={:.3}s entidades={} E={:.3} (K={:.3} V={:.3}) E_avg={:.3} T_avg={:.1} colisiones={} fps={:.1} mem={}kB",
+            "tick={} t={:.3}s entities={} E={:.3} (K={:.3} V={:.3}) E_avg={:.3} T_avg={:.1} collisions={} fps={:.1} mem={}kB",
             s.tick,
             s.time,
             s.entities,
@@ -300,10 +300,11 @@ impl Universe {
     }
 }
 
-/// Construye el schedule según la configuración, en orden de registro.
+/// Builds the schedule according to the configuration, in registration order.
 ///
-/// Con fuerzas activas usa **velocity Verlet** (kick–drift–force–kick); sin
-/// ellas conserva la integración Euler clásica para movimiento y colisiones.
+/// With forces enabled it uses **velocity Verlet** (kick–drift–force–kick);
+/// without them it keeps the classic Euler integration for movement and
+/// collisions.
 fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
     if cfg.systems.enable_forces {
         scheduler.add_system(VelocityHalfKick);
@@ -337,22 +338,22 @@ impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vol = self.config.universe.size.x * self.config.universe.size.y * self.config.universe.size.z;
         writeln!(f, "┌─ GENESIS ─────────────────────────────────────────────")?;
-        writeln!(f, "│ universo       : {}", self.config.universe.name)?;
+        writeln!(f, "│ universe       : {}", self.config.universe.name)?;
         writeln!(
             f,
-            "│ tamaño         : {} (vol {:.0} u³)",
+            "│ size           : {} (vol {:.0} u³)",
             self.config.universe.size, vol
         )?;
         writeln!(f, "│ dt             : {:.4}s ({} ticks/s)", self.time.dt, 1.0 / self.time.dt)?;
-        writeln!(f, "│ semilla RNG    : {}", self.config.rng.seed)?;
+        writeln!(f, "│ RNG seed       : {}", self.config.rng.seed)?;
         writeln!(
             f,
-            "│ población      : {} átomos (pedido: {})",
+            "│ population     : {} atoms (requested: {})",
             self.world.len(),
             self.config.universe.initial_atoms
         )?;
-        writeln!(f, "│ arquetipos ECS : {}", self.world.archetype_count())?;
-        writeln!(f, "│ sistemas       : {}", self.scheduler.systems().len())?;
+        writeln!(f, "│ ECS archetypes : {}", self.world.archetype_count())?;
+        writeln!(f, "│ systems        : {}", self.scheduler.systems().len())?;
         writeln!(f, "└──────────────────────────────────────────────────────")?;
         Ok(())
     }

@@ -1,27 +1,27 @@
-//! Integrador de **velocity Verlet** (split kick–drift–kick).
+//! **Velocity Verlet** integrator (kick–drift–kick split).
 //!
-//! Cada tick se ejecutan dos medios impulsos de velocidad alrededor del drift
-//! de posición y del cálculo de fuerzas:
+//! Every tick two half kicks of velocity run around the position drift and
+//! the force computation:
 //!
 //! ```text
 //! v(t + dt/2) = v(t) + (dt/2)·a(t)          → VelocityHalfKick
 //! x(t + dt)   = x(t) + dt·v(t + dt/2)       → PositionDrift
-//! a(t + dt)   = fuerzas en x(t + dt)        → ForceSystem
+//! a(t + dt)   = forces at x(t + dt)        → ForceSystem
 //! v(t + dt)   = v(t + dt/2) + (dt/2)·a(t+dt) → VelocityHalfKick
 //! ```
 //!
-//! Es un integrador **simpéctico**: conserva la energía de un sistema
-//! conservativo con error acotado O(dt²) y no deriva con el tiempo. Es la
-//! integración estándar de la dinámica molecular.
+//! It is a **symplectic** integrator: it conserves the energy of a
+//! conservative system with bounded O(dt²) error and does not drift over
+//! time. It is the standard integration of molecular dynamics.
 
 use crate::components::{Acceleration, Position, Velocity};
 use crate::scheduler::{Access, System, SystemContext};
 
-/// Medio impulso: `v += (dt/2)·a`.
+/// Half kick: `v += (dt/2)·a`.
 ///
-/// Se registra **dos veces** en el schedule: la primera usa la aceleración del
-/// tick anterior (leída antes de que `ForceSystem` la recalcule) y la segunda
-/// la aceleración recién calculada.
+/// It is registered **twice** in the schedule: the first time it uses the
+/// acceleration of the previous tick (read before `ForceSystem` recomputes
+/// it) and the second time the freshly computed acceleration.
 pub struct VelocityHalfKick;
 
 impl System for VelocityHalfKick {
@@ -44,7 +44,7 @@ impl System for VelocityHalfKick {
     }
 }
 
-/// Drift de posición: `x += v·dt` (con `v` ya en el medio paso).
+/// Position drift: `x += v·dt` (with `v` already in the half step).
 pub struct PositionDrift;
 
 impl System for PositionDrift {

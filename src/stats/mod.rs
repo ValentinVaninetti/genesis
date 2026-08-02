@@ -1,63 +1,63 @@
-//! Estadísticas de la simulación.
+//! Simulation statistics.
 //!
-//! Un `StatsCollector` agrega, cada tick, un `StatsSnapshot` y mantiene un
-//! historial acotado. El muestreo lo hace un sistema (el último del schedule),
-//! de modo que la recolección de métricas es parte del universo y no un efecto
-//! lateral del bucle principal.
+//! A `StatsCollector` aggregates a `StatsSnapshot` every tick and keeps a
+//! bounded history. Sampling is done by a system (the last one in the
+//! schedule), so metric collection is part of the universe and not a side
+//! effect of the main loop.
 
 use serde::{Deserialize, Serialize};
 
-/// Estructura emergente medida por el sistema de análisis (agregados de
-/// friends-of-friends). Es observación, no estado físico: describe lo que las
-/// leyes producen, sin alimentar la simulación.
+/// Emergent structure measured by the analysis system (friends-of-friends
+/// aggregates). It is observation, not physical state: it describes what the
+/// laws produce, without feeding the simulation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StructureStats {
-    /// Tick en que se midió.
+    /// Tick in which it was measured.
     pub tick: u64,
-    /// Clusters de un solo átomo.
+    /// Clusters of a single atom.
     pub monomers: usize,
-    /// Clusters de ≥ 2 átomos.
+    /// Clusters of ≥ 2 atoms.
     pub aggregates: usize,
-    /// Tamaño del agregado más grande.
+    /// Size of the largest aggregate.
     pub largest: usize,
-    /// Tamaño medio sobre todos los clusters.
+    /// Mean size over all clusters.
     pub mean_size: f64,
-    /// Pares de átomos en contacto.
+    /// Atom pairs in contact.
     pub bound_pairs: usize,
 }
 
-/// Una fotografía de métricas en un instante del tiempo de simulación.
+/// A snapshot of metrics at an instant of simulation time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSnapshot {
     pub tick: u64,
     pub time: f64,
     pub entities: usize,
-    /// Energía cinética total (derivada de `Velocity` y `Mass`).
+    /// Total kinetic energy (derived from `Velocity` and `Mass`).
     pub energy_total: f64,
     pub energy_avg: f64,
-    /// Energía potencial total del tick (Lennard-Jones, acumulada por fuerzas).
+    /// Total potential energy of the tick (Lennard-Jones, accumulated by forces).
     pub energy_potential: f64,
-    /// Temperatura derivada por equipartición: `(2/3)·⟨K⟩/k`.
+    /// Temperature derived by equipartition: `(2/3)·⟨K⟩/k`.
     pub temperature_avg: f64,
-    /// Rapidez media de las partículas.
+    /// Mean speed of the particles.
     pub mean_speed: f64,
     pub density: f64,
     pub collisions: u64,
     pub systems_run: u64,
     pub fps: f64,
     pub memory_bytes: usize,
-    /// Resumen de estructura del último muestreo del análisis (None si no hay
-    /// fuerzas o aún no se muestreó).
+    /// Structure summary of the last analysis sampling (None if there are no
+    /// forces or it has not been sampled yet).
     pub structure: Option<StructureStats>,
 }
 
-/// Colector de métricas con historial.
+/// Metrics collector with history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsCollector {
     pub snapshot: StatsSnapshot,
-    /// Total de sistemas ejecutados desde el inicio.
+    /// Total systems executed since the start.
     pub systems_run: u64,
-    /// FPS reales medidos por el bucle principal (no es tiempo de simulación).
+    /// Real FPS measured by the main loop (not simulation time).
     pub fps: f64,
     history: Vec<StatsSnapshot>,
     history_cap: usize,
@@ -89,7 +89,7 @@ impl StatsCollector {
         }
     }
 
-    /// Registra una métrica nueva en el historial.
+    /// Records a new metric in the history.
     pub fn record(&mut self, snapshot: StatsSnapshot) {
         if self.history.len() == self.history_cap {
             self.history.remove(0);
@@ -98,43 +98,43 @@ impl StatsCollector {
         self.history.push(snapshot);
     }
 
-    /// Última métrica registrada.
+    /// Latest recorded metric.
     pub fn snapshot(&self) -> &StatsSnapshot {
         &self.snapshot
     }
 
-    /// Métricas históricas (acotadas).
+    /// Historical metrics (bounded).
     pub fn history(&self) -> &[StatsSnapshot] {
         &self.history
     }
 }
 
-/// Recurso global: contador de colisiones.
+/// Global resource: collision counter.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct CollisionCounter(pub u64);
 
-/// Recurso global: energía potencial total del tick actual (Lennard-Jones),
-/// acumulada por el sistema de fuerzas. No es estado persistente: se recalcula
-/// por completo en cada tick.
+/// Global resource: total potential energy of the current tick
+/// (Lennard-Jones), accumulated by the force system. Not persistent state: it
+/// is fully recomputed every tick.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct PotentialEnergy(pub f64);
 
-/// Histograma de rapideces (`|v|`) observado en un instante.
+/// Speed (`|v|`) histogram observed at an instant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VelocityHistogram {
-    /// Límite superior del rango.
+    /// Upper bound of the range.
     pub max_speed: f64,
-    /// Ancho de cada bin.
+    /// Width of each bin.
     pub bin_width: f64,
-    /// Conteos por bin.
+    /// Counts per bin.
     pub bins: Vec<u64>,
-    /// Total de muestras.
+    /// Total samples.
     pub samples: u64,
-    /// Muestras fuera de rango (`≥ max_speed`).
+    /// Samples out of range (`≥ max_speed`).
     pub overflow: u64,
 }
 
-/// Construye un histograma de rapidez a partir del `World`.
+/// Builds a speed histogram from the `World`.
 pub fn velocity_histogram(
     world: &crate::ecs::World,
     max_speed: f64,
@@ -170,7 +170,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn historial_acotado() {
+    fn history_is_bounded() {
         let mut c = StatsCollector::new(3);
         for i in 0..10 {
             let mut s = c.snapshot.clone();

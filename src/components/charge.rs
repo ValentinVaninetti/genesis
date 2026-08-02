@@ -1,4 +1,4 @@
-//! `Charge`: carga eléctrica neta (en unidades de carga elemental).
+//! `Charge`: net electric charge (in units of elementary charge).
 
 use crate::ecs::{Component, ComponentId};
 use serde::{Deserialize, Serialize};

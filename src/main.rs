@@ -1,8 +1,8 @@
-//! Punto de entrada del motor.
+//! Engine entry point.
 //!
-//! Uso:
+//! Usage:
 //! ```text
-//! genesis [config.toml] [ticks] [reportar_cada]
+//! genesis [config.toml] [ticks] [report_every]
 //! ```
 
 use genesis::config::Config;
@@ -26,7 +26,7 @@ fn main() {
     let mut universe = Universe::new(config);
 
     println!("{universe}");
-    println!("> plan del scheduler (etapas sin conflicto de acceso):");
+    println!("> scheduler plan (access-conflict-free stages):");
     let plan = universe.scheduler.plan().to_vec();
     for (i, stage) in plan.iter().enumerate() {
         let names: Vec<&str> = stage
@@ -34,7 +34,7 @@ fn main() {
             .iter()
             .map(|&j| universe.scheduler.systems()[j].name())
             .collect();
-        println!("    etapa {i}: {}", names.join(", "));
+        println!("    stage {i}: {}", names.join(", "));
     }
     println!();
 
@@ -45,10 +45,10 @@ fn main() {
             let s = &universe.stats.snapshot;
             let structure = s
                 .structure
-                .map(|x| format!(" | ag={} mon={} mayor={} lig={}", x.aggregates, x.monomers, x.largest, x.bound_pairs))
+                .map(|x| format!(" | ag={} mon={} largest={} bound={}", x.aggregates, x.monomers, x.largest, x.bound_pairs))
                 .unwrap_or_default();
             println!(
-                "[tick {:>9}] t={:>10.3}s | entidades={:>9} | E={:>12.3} | K={:>12.3} | V={:>12.3} | E_avg={:>8.3} | T_avg={:>7.1} | |v|={:>6.3} | colisiones={:>8} | fps={:>7.1} | mem={:>8}kB{}",
+                "[tick {:>9}] t={:>10.3}s | entities={:>9} | E={:>12.3} | K={:>12.3} | V={:>12.3} | E_avg={:>8.3} | T_avg={:>7.1} | |v|={:>6.3} | collisions={:>8} | fps={:>7.1} | mem={:>8}kB{}",
                 s.tick,
                 s.time,
                 s.entities,
@@ -68,35 +68,35 @@ fn main() {
     let wall_secs = wall.elapsed().as_secs_f64();
 
     println!();
-    println!("> {ticks} ticks en {wall_secs:.2}s → {:.0} ticks/s reales", ticks as f64 / wall_secs);
+    println!("> {ticks} ticks in {wall_secs:.2}s → {:.0} real ticks/s", ticks as f64 / wall_secs);
     println!("> {}", universe.status_line());
-    println!("> histograma de velocidades:");
+    println!("> velocity histogram:");
     print_histogram(&universe);
     print_structure(&universe);
 
-    // Demo de persistencia: guardar y retomar el universo.
+    // Persistence demo: save and resume the universe.
     let save_path = "genesis-snapshot.bin";
     match universe.save(save_path) {
-        Ok(()) => println!("> universo guardado en `{save_path}`"),
-        Err(e) => eprintln!("! error al guardar: {e}"),
+        Ok(()) => println!("> universe saved to `{save_path}`"),
+        Err(e) => eprintln!("! error saving: {e}"),
     }
     match Universe::load(save_path) {
         Ok(loaded) => println!(
-            "> universo recargado: tick={} t={:.3}s entidades={} (idéntico al original)",
+            "> universe reloaded: tick={} t={:.3}s entities={} (identical to the original)",
             loaded.time.tick,
             loaded.time.t,
             loaded.world.len(),
         ),
-        Err(e) => eprintln!("! error al recargar: {e}"),
+        Err(e) => eprintln!("! error reloading: {e}"),
     }
 }
 
-/// Imprime la estructura emergente: agregados y primer pico de g(r).
+/// Prints the emergent structure: aggregates and the first peak of g(r).
 fn print_structure(universe: &Universe) {
     let clusters = universe.cluster_analysis();
-    println!("> estructura emergente (observación, no ley):");
+    println!("> emergent structure (observation, not a law):");
     println!(
-        "    agregados: {} | monómeros: {} | mayor: {} | pares ligados: {} | tamaño medio: {:.2}",
+        "    aggregates: {} | monomers: {} | largest: {} | bound pairs: {} | mean size: {:.2}",
         clusters.aggregates,
         clusters.monomers,
         clusters.largest,
@@ -107,24 +107,24 @@ fn print_structure(universe: &Universe) {
     let size = universe.config.universe.size;
     let r_max = size.x.min(size.y).min(size.z) * 0.5;
     let g = universe.radial_distribution(r_max, 512);
-    // Ventana de capa de coordinación: la mitad del rango evita el
-    // apilamiento de distancias del toro cerca de L/2.
+    // Coordination shell window: half the range avoids the stacking of torus
+    // distances near L/2.
     match g.peak_in(0.5, r_max * 0.5) {
         Some((r, value)) => println!(
-            "    g(r): primer vecino en r≈{r:.2} (g={value:.2}) → {}",
+            "    g(r): first neighbor at r≈{r:.2} (g={value:.2}) → {}",
             if value > 3.0 {
-                "orden local claro (fase condensada)"
+                "clear local order (condensed phase)"
             } else if value > 1.5 {
-                "cierto orden local (líquido/agregados)"
+                "some local order (liquid/aggregates)"
             } else {
-                "sin orden local (gas)"
+                "no local order (gas)"
             },
         ),
-        None => println!("    g(r): sin picos (sistema vacío)"),
+        None => println!("    g(r): no peaks (empty system)"),
     }
 }
 
-/// Imprime el histograma de rapideces como barras ASCII.
+/// Prints the speed histogram as ASCII bars.
 fn print_histogram(universe: &Universe) {
     let cfg = &universe.config.stats;
     let hist = velocity_histogram(&universe.world, cfg.histogram_max_speed, cfg.histogram_bins);

@@ -1,9 +1,9 @@
-//! `StatsSystem` — observación del universo.
+//! `StatsSystem` — observation of the universe.
 //!
-//! Se ejecuta **último** en el schedule y agrega una `StatsSnapshot` por tick.
-//! Solo lee: la energía y la temperatura se **derivan** de las velocidades
-//! (cinética + equipartición), del potencial acumulado por las fuerzas y del
-//! contador de colisiones, en lugar de almacenarse como estado.
+//! It runs **last** in the schedule and aggregates a `StatsSnapshot` per tick.
+//! It only reads: energy and temperature are **derived** from the velocities
+//! (kinetic + equipartition), from the potential accumulated by the forces
+//! and from the collision counter, instead of being stored as state.
 
 use crate::components::{Mass, Velocity};
 use crate::config::Config;
@@ -54,7 +54,8 @@ impl System for StatsSystem {
             count += 1;
         });
 
-        // Equipartición: con 3 grados traslacionales, T = (2/3)·⟨K⟩/k.
+        // Equipartition: with 3 translational degrees of freedom,
+        // T = (2/3)·⟨K⟩/k.
         let k_eff = cfg.map(|c| c.physics.thermal_constant).unwrap_or(0.0);
         let energy_avg = if count > 0 {
             kinetic / count as f64
@@ -77,7 +78,7 @@ impl System for StatsSystem {
             tick: ctx.time.tick,
             time: ctx.time.t,
             entities: ctx.world.len(),
-            // Energía total: cinética + potencial (conservada por Verlet).
+            // Total energy: kinetic + potential (conserved by Verlet).
             energy_total: kinetic + energy_potential,
             energy_avg,
             energy_potential,

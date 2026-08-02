@@ -1,18 +1,18 @@
-//! Reloj del universo.
+//! Clock of the universe.
 //!
-//! Distingue entre *tiempo de simulación* (`t`) y *tick* (paso discreto).
-//! El `dt` es fijo y vive en la configuración: a diferencia de los motores de
-//! juego, una simulación física determinista no necesita dt variable.
+//! Distinguishes between *simulation time* (`t`) and *tick* (discrete step).
+//! `dt` is fixed and lives in the configuration: unlike game engines, a
+//! deterministic physical simulation does not need a variable dt.
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Time {
-    /// Tiempo de simulación transcurrido.
+    /// Elapsed simulation time.
     pub t: f64,
-    /// Número de tick actual.
+    /// Current tick number.
     pub tick: u64,
-    /// Delta de tiempo por tick (constante).
+    /// Time delta per tick (constant).
     pub dt: f64,
 }
 
@@ -21,7 +21,7 @@ impl Time {
         Self { t: 0.0, tick: 0, dt }
     }
 
-    /// Avanza un tick.
+    /// Advances one tick.
     pub fn advance(&mut self) {
         self.t += self.dt;
         self.tick += 1;

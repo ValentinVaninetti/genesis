@@ -1,14 +1,15 @@
-//! `ForceSystem` — fuerzas intermoleculares de Lennard-Jones.
+//! `ForceSystem` — Lennard-Jones intermolecular forces.
 //!
-//! Es la **única** ley que crea interacción entre partículas más allá del
-//! impulso de colisión. Calcula, con el mismo grid espacial que las
-//! colisiones, la fuerza LJ de cada par dentro del cutoff y la acumula como
-//! aceleración en el componente `Acceleration` (que el integrador de Verlet
-//! consume). También acumula la energía potencial total en el recurso
-//! `PotentialEnergy` para que las estadísticas reporten `E = K + V`.
+//! It is the **only** law that creates interaction between particles beyond
+//! the collision impulse. Using the same spatial grid as collisions, it
+//! computes the LJ force of each pair within the cutoff and accumulates it as
+//! acceleration in the `Acceleration` component (consumed by the Verlet
+//! integrator). It also accumulates the total potential energy in the
+//! `PotentialEnergy` resource so statistics can report `E = K + V`.
 //!
-//! No sabe nada de especies, enlaces ni reacciones: solo masa, posición y tipo
-//! atómico (que aporta σ y ε). Toda la "química" emerge de aquí.
+//! It knows nothing about species, bonds or reactions: only mass, position
+//! and atomic type (which provides σ and ε). All the "chemistry" emerges from
+//! here.
 
 use crate::components::{Acceleration, AtomType, Mass, Position};
 use crate::config::Config;
@@ -29,8 +30,8 @@ fn element_index(t: AtomType) -> usize {
     }
 }
 
-/// Sistema de fuerzas. El grid se reutiliza entre ticks y se reconstruye por
-/// completo en cada `run` (mismo patrón que `CollisionSystem`).
+/// Force system. The grid is reused between ticks and fully rebuilt in each
+/// `run` (same pattern as `CollisionSystem`).
 pub struct ForceSystem {
     grid: SpatialGrid,
     lj: LjTable,
@@ -41,8 +42,8 @@ impl ForceSystem {
     pub fn new(cfg: &Config) -> Self {
         let lj = LjTable::new(cfg.physics.thermal_constant, LJ_CUTOFF_FACTOR);
         let rc = lj.rc();
-        // Celdas de al menos el cutoff: dos partículas que interactúan solo
-        // pueden vivir en la misma celda o en celdas vecinas.
+        // Cells of at least the cutoff: two interacting particles can only
+        // live in the same cell or in neighbor cells.
         let grid = SpatialGrid::new(cfg.universe.size, rc);
         Self { grid, lj, rc }
     }
@@ -71,7 +72,7 @@ impl System for ForceSystem {
         let rc2 = self.rc * self.rc;
         let capacity = ctx.world.entity_capacity();
 
-        // Fase 1: recolectar las partículas (posición, masa, elemento).
+        // Phase 1: collect the particles (position, mass, element).
         let mut particles: Vec<Particle> = Vec::with_capacity(ctx.world.len());
         let mut types: Vec<u32> = Vec::with_capacity(ctx.world.len());
         ctx.world.for_each3::<Position, Mass, AtomType>(|e, pos, mass, at| {
@@ -87,15 +88,15 @@ impl System for ForceSystem {
             return;
         }
 
-        // Fase 2: broadphase — pares dentro del cutoff.
+        // Phase 2: broadphase — pairs within the cutoff.
         self.grid.build(&particles);
         let mut pairs = Vec::new();
         self.grid.neighbors(&particles, self.rc, &mut pairs);
 
-        // Fase 3: acumular fuerzas (a = F/m) y energía potencial por par.
-        // La normal del par apunta de `b` hacia `a`; la fuerza sobre `a` va a
-        // lo largo de ella, y sobre `b` es exactamente la opuesta (3ª ley de
-        // Newton), por lo que el momento total se conserva.
+        // Phase 3: accumulate forces (a = F/m) and potential energy per pair.
+        // The pair normal points from `b` towards `a`; the force on `a` goes
+        // along it, and the one on `b` is exactly the opposite (Newton's 3rd
+        // law), so total momentum is conserved.
         let mut acc = vec![Vec3::ZERO; capacity];
         let mut potential = 0.0;
         for &pair in &pairs {
@@ -118,7 +119,7 @@ impl System for ForceSystem {
             potential += v;
         }
 
-        // Fase 4: aplicar las aceleraciones en paralelo.
+        // Phase 4: apply the accelerations in parallel.
         ctx.world.par_for_each1_mut::<Acceleration>(|e, a| {
             a.0 = acc[e.index() as usize];
         });
@@ -142,9 +143,9 @@ mod tests {
     }
 
     #[test]
-    fn energia_y_momento_se_conservan_con_fuerzas() {
+    fn energy_and_momentum_conserve_with_forces() {
         let mut cfg = Config::default_config();
-        cfg.universe.initial_atoms = 512; // 8³: red cúbica exacta
+        cfg.universe.initial_atoms = 512; // 8³: exact cubic lattice
         cfg.universe.size = Vec3::new(24.0, 24.0, 24.0);
         cfg.physics.initial_temperature = 100.0;
         cfg.physics.thermal_constant = 0.01;
@@ -155,15 +156,15 @@ mod tests {
         let p0 = momentum(&u.world);
         let p0n = p0.length();
 
-        // Relajación inicial: la red fría se reorganiza; la energía total ya se
-        // conserva desde el primer tick (Verlet + fuerzas internas).
+        // Initial relaxation: the cold lattice reorganizes; total energy is
+        // already conserved from the first tick (Verlet + internal forces).
         u.run_ticks(300);
 
         let e_ref = u.stats.snapshot.energy_total;
-        assert!(e_ref > 0.0, "energía total no positiva: {e_ref}");
+        assert!(e_ref > 0.0, "total energy not positive: {e_ref}");
         assert!(
             u.stats.snapshot.energy_potential < 0.0,
-            "esperada atracción neta (V < 0), se obtuvo {}",
+            "expected net attraction (V < 0), got {}",
             u.stats.snapshot.energy_potential
         );
 
@@ -172,7 +173,7 @@ mod tests {
         let e1 = u.stats.snapshot.energy_total;
         let rel = (e1 - e_ref).abs() / e_ref.abs();
         let dp = (momentum(&u.world) - p0).length();
-        assert!(rel < 1e-3, "deriva relativa de energía: {rel:.3e}");
-        assert!(dp < 1e-6 * p0n.max(1.0), "deriva de momento: {dp:.3e}");
+        assert!(rel < 1e-3, "relative energy drift: {rel:.3e}");
+        assert!(dp < 1e-6 * p0n.max(1.0), "momentum drift: {dp:.3e}");
     }
 }

@@ -1,38 +1,39 @@
-//! Potencial de Lennard-Jones: la interacción intermolecular fundamental.
+//! Lennard-Jones potential: the fundamental intermolecular interaction.
 //!
-//! Es la única "química" del universo. Cada elemento aporta un `σ` (alcance)
-//! y una `ε` (profundidad del pozo de potencial, en kelvin). Para un par de
-//! tipos distintos se usan las reglas de mezcla de **Lorentz–Berthelot**:
+//! It is the only "chemistry" of the universe. Each element contributes a `σ`
+//! (range) and an `ε` (depth of the potential well, in kelvin). For a pair of
+//! different types the **Lorentz–Berthelot** mixing rules are used:
 //!
 //! ```text
 //! σ_ij = (σ_i + σ_j) / 2        ε_ij = √(ε_i · ε_j)
 //! ```
 //!
-//! De este único potencial emergen la repulsión de corto alcance, la
-//! atracción de Van der Waals y, con ella, la condensación, los agregados y
-//! cualquier estructura que aparezca. Nada se programa como "molécula".
+//! From this single potential emerge short-range repulsion, Van der Waals
+//! attraction and, with it, condensation, aggregates and any structure that
+//! appears. Nothing is programmed as a "molecule".
 //!
-//! ## Unidades
+//! ## Units
 //!
-//! `σ` está en unidades de simulación (la misma escala que posición y masa);
-//! `ε` se expresa en kelvin y se convierte a energía de simulación con la
-//! constante térmica de la configuración (`k`). Así, `k·T/ε = T/ε_k`: la
-//! temperatura crítica de un elemento es ≈ `1.31·ε_k`.
+//! `σ` is in simulation units (the same scale as position and mass); `ε` is
+//! expressed in kelvin and converted to simulation energy with the thermal
+//! constant of the configuration (`k`). Thus `k·T/ε = T/ε_k`: the critical
+//! temperature of an element is ≈ `1.31·ε_k`.
 
 use crate::components::AtomType;
 use crate::math::Vec3;
 
-/// Parámetros de Lennard-Jones de un elemento.
+/// Lennard-Jones parameters of an element.
 #[derive(Debug, Clone, Copy)]
 pub struct LjElement {
-    /// Alcance del potencial (unidades de simulación).
+    /// Range of the potential (simulation units).
     pub sigma: f64,
-    /// Profundidad del pozo en kelvin.
+    /// Depth of the well in kelvin.
     pub epsilon_k: f64,
 }
 
-/// Tabla de elementos: `σ` en unidades de simulación, `ε` en kelvin.
-/// Valores del orden de los reales para gases simples (relativos entre sí).
+/// Element table: `σ` in simulation units, `ε` in kelvin.
+/// Values of the order of the real ones for simple gases (relative to each
+/// other).
 const ELEMENTS: [LjElement; 6] = [
     LjElement { sigma: 1.6, epsilon_k: 12.0 }, // H
     LjElement { sigma: 1.4, epsilon_k: 8.0 },  // He
@@ -42,11 +43,11 @@ const ELEMENTS: [LjElement; 6] = [
     LjElement { sigma: 2.0, epsilon_k: 110.0 }, // Na
 ];
 
-/// Distancia de corte en múltiplos de `σ`: más allá no hay interacción.
+/// Cutoff distance in multiples of `σ`: beyond it there is no interaction.
 pub const LJ_CUTOFF_FACTOR: f64 = 2.5;
 
-/// Núcleo endurecido: por debajo de `r_min = NUCLEUS · σ` el potencial se
-/// evalúa en `r_min` (evita la divergencia `r→0` con `dt` finito).
+/// Hardened nucleus: below `r_min = NUCLEUS · σ` the potential is evaluated
+/// at `r_min` (avoids the `r→0` divergence with finite `dt`).
 pub const LJ_NUCLEUS: f64 = 0.5;
 
 fn element_index(t: AtomType) -> usize {
@@ -60,19 +61,19 @@ fn element_index(t: AtomType) -> usize {
     }
 }
 
-/// Alcance `σ` de un elemento (unidades de simulación).
+/// Range `σ` of an element (simulation units).
 pub fn sigma(t: AtomType) -> f64 {
     ELEMENTS[element_index(t)].sigma
 }
 
-/// Parámetros de un par de tipos (`ε` ya en unidades de energía).
+/// Parameters of a pair of types (`ε` already in energy units).
 #[derive(Debug, Clone, Copy)]
 pub struct LjPair {
     pub sigma: f64,
     pub epsilon: f64,
 }
 
-/// Tabla de pares (6×6, simétrica) con el cutoff del sistema.
+/// Pair table (6×6, symmetric) with the system cutoff.
 pub struct LjTable {
     pair: [[LjPair; 6]; 6],
     rc: f64,
@@ -80,8 +81,8 @@ pub struct LjTable {
 }
 
 impl LjTable {
-    /// Construye la tabla con las reglas de mezcla y prepara el switch suave
-    /// entre `r_on` y `rc`.
+    /// Builds the table with the mixing rules and prepares the smooth switch
+    /// between `r_on` and `rc`.
     pub fn new(thermal_constant: f64, cutoff_factor: f64) -> Self {
         let mut max_sigma = 0.0f64;
         let mut pair = [[LjPair { sigma: 1.0, epsilon: 0.0 }; 6]; 6];
@@ -100,27 +101,27 @@ impl LjTable {
         Self { pair, rc, r_on }
     }
 
-    /// Distancia de corte del sistema.
+    /// Cutoff distance of the system.
     pub fn rc(&self) -> f64 {
         self.rc
     }
 
-    /// Parámetros del par `(a, b)`.
+    /// Parameters of the pair `(a, b)`.
     pub fn pair(&self, a: AtomType, b: AtomType) -> LjPair {
         self.pair[element_index(a)][element_index(b)]
     }
 
-    /// Parámetros del par por índice de elemento.
+    /// Parameters of the pair by element index.
     pub fn pair_indexed(&self, i: usize, j: usize) -> LjPair {
         self.pair[i][j]
     }
 
-    /// Fuerza (sobre `a`, a lo largo de `normal` que apunta de `b` hacia `a`)
-    /// y contribución al potencial, con el potencial truncado y *switcheado*
-    /// para que tanto la energía como la fuerza tiendan suavemente a 0 en `rc`.
+    /// Force (on `a`, along `normal` pointing from `b` towards `a`) and
+    /// potential contribution, with the potential truncated and *switched* so
+    /// that both energy and force tend smoothly to 0 at `rc`.
     ///
-    /// `r` debe ser `< rc`; por debajo de `LJ_NUCLEUS·σ` se evalúa en ese
-    /// punto (núcleo endurecido).
+    /// `r` must be `< rc`; below `LJ_NUCLEUS·σ` it is evaluated at that point
+    /// (hardened nucleus).
     #[inline]
     pub fn force_switched(&self, p: LjPair, r: f64, normal: Vec3) -> (Vec3, f64) {
         let r = r.max(LJ_NUCLEUS * p.sigma);
@@ -128,8 +129,8 @@ impl LjTable {
         let s6 = s * s * s * s * s * s;
         let s12 = s6 * s6;
 
-        // Potencial LJ (no desplazado) y magnitud base de la fuerza a lo largo
-        // de `normal` (= −dV/dr).
+        // LJ potential (not shifted) and base force magnitude along `normal`
+        // (= −dV/dr).
         let v = 4.0 * p.epsilon * (s12 - s6);
         let m = (24.0 * p.epsilon / p.sigma) * s * (2.0 * s12 - s6);
 
@@ -139,11 +140,11 @@ impl LjTable {
         (normal * f_mag, v * sw)
     }
 
-    /// Factor de suavizado `[0,1]` y su derivada respecto a `r`.
+    /// Smoothing factor `[0,1]` and its derivative with respect to `r`.
     ///
-    /// Polinomio quíntico (función suave estándar de dinámica molecular):
-    /// vale 1 hasta `r_on` y cae a 0 en `rc` con primera y segunda derivada
-    /// nulas en ambos extremos.
+    /// Quintic polynomial (standard smooth function of molecular dynamics):
+    /// it is 1 up to `r_on` and falls to 0 at `rc` with zero first and second
+    /// derivatives at both ends.
     #[inline]
     fn switch(&self, r: f64) -> (f64, f64) {
         if r <= self.r_on {
@@ -160,7 +161,8 @@ impl LjTable {
     }
 }
 
-/// Fuerza y potencial LJ **sin** switch, para tests de la forma del potencial.
+/// LJ force and potential **without** switch, for tests of the potential
+/// shape.
 #[inline]
 pub fn lj_raw(p: LjPair, r: f64) -> (f64, f64) {
     let s = p.sigma / r;
@@ -180,47 +182,47 @@ mod tests {
     }
 
     #[test]
-    fn pozo_de_potencial_en_sigma_por_raiz_sexta_de_2() {
-        // El mínimo de V(r) = 4ε[(σ/r)¹² − (σ/r)⁶] está en r = σ·2^(1/6),
-        // con V = −ε.
+    fn potential_minimum_at_sigma_root_sixth_of_2() {
+        // The minimum of V(r) = 4ε[(σ/r)¹² − (σ/r)⁶] is at r = σ·2^(1/6),
+        // with V = −ε.
         let t = table();
         let p = t.pair(AtomType::Hydrogen, AtomType::Hydrogen);
         let r_min = p.sigma * 2.0f64.powf(1.0 / 6.0);
         let (_, v) = lj_raw(p, r_min);
         assert!((v + p.epsilon).abs() < 1e-12 * p.epsilon.max(1.0));
         let (m, _) = lj_raw(p, r_min);
-        assert!(m.abs() < 1e-9, "la fuerza en el mínimo debe anularse");
+        assert!(m.abs() < 1e-9, "the force at the minimum must vanish");
     }
 
     #[test]
-    fn fuerza_repulsiva_y_atractiva() {
-        // normal = +x (de b hacia a). Dentro de σ la fuerza empuja (repulsión);
-        // fuera atrae (m < 0 a lo largo de +x).
+    fn repulsive_and_attractive_force() {
+        // normal = +x (from b towards a). Inside σ the force pushes (repulsion);
+        // outside it attracts (m < 0 along +x).
         let t = table();
         let p = t.pair(AtomType::Carbon, AtomType::Carbon);
         let (m_rep, _) = lj_raw(p, 0.8 * p.sigma);
-        assert!(m_rep > 0.0, "esperada repulsión dentro de σ");
+        assert!(m_rep > 0.0, "expected repulsion inside σ");
         let (m_att, _) = lj_raw(p, 1.5 * p.sigma);
-        assert!(m_att < 0.0, "esperada atracción fuera de σ");
-        // El cruce por cero coincide con el mínimo del pozo.
+        assert!(m_att < 0.0, "expected attraction outside σ");
+        // The zero crossing coincides with the minimum of the well.
         let (m0, _) = lj_raw(p, p.sigma * 2.0f64.powf(1.0 / 6.0));
         assert!(m0.abs() < 1e-9);
     }
 
     #[test]
-    fn reglas_de_mezcla_simetricas() {
+    fn mixing_rules_are_symmetric() {
         let t = table();
         let h = t.pair(AtomType::Hydrogen, AtomType::Carbon);
         let c = t.pair(AtomType::Carbon, AtomType::Hydrogen);
         assert_eq!(h.sigma, c.sigma);
         assert_eq!(h.epsilon, c.epsilon);
-        // ε_ij entre los extremos: √(ε_H·ε_C).
+        // ε_ij between the extremes: √(ε_H·ε_C).
         let expected = 0.01 * (12.0f64 * 80.0).sqrt();
         assert!((h.epsilon - expected).abs() < 1e-12);
     }
 
     #[test]
-    fn el_switch_se_anula_en_el_corte() {
+    fn switch_vanishes_at_cutoff() {
         let t = table();
         let p = t.pair(AtomType::Oxygen, AtomType::Oxygen);
         let r = t.rc();
@@ -228,7 +230,7 @@ mod tests {
         let (f, v) = t.force_switched(p, r, Vec3::new(1.0, 0.0, 0.0));
         assert_eq!(f, Vec3::ZERO);
         assert_eq!(v, 0.0);
-        // Dentro de r_on no hay suavizado.
+        // Inside r_on there is no smoothing.
         let r_in = 0.8 * t.r_on;
         let (f_in, _) = t.force_switched(p, r_in, Vec3::new(1.0, 0.0, 0.0));
         let (m, _) = lj_raw(p, r_in);

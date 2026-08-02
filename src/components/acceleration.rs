@@ -1,13 +1,13 @@
-//! `Acceleration`: segunda derivada de la posición (fuerza neta sobre masa).
+//! `Acceleration`: second derivative of the position (net force over mass).
 
 use crate::ecs::{Component, ComponentId};
 use crate::math::Vec3;
 use serde::{Deserialize, Serialize};
 
-/// Aceleración neta de una entidad, recalculada cada tick por el sistema de
-/// fuerzas. Es el estado intermedio del integrador de Verlet: la aceleración
-/// del tick anterior se lee para el medio paso de velocidad, y el sistema de
-/// fuerzas la reemplaza por la del tick actual.
+/// Net acceleration of an entity, recomputed every tick by the force system.
+/// It is the intermediate state of the Verlet integrator: the acceleration of
+/// the previous tick is read for the velocity half step, and the force system
+/// replaces it with the current one.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Acceleration(pub Vec3);

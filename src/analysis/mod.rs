@@ -1,39 +1,40 @@
-//! Análisis de estructura emergente.
+//! Analysis of emergent structure.
 //!
-//! No son leyes: son **lentes**. Toda la física vive en `physics/`; aquí solo
-//! se miden consecuencias de las leyes para observar si emerge estructura
-//! (condensación, agregados, orden). Nada de lo que hay aquí alimenta la
-//! simulación: es observación pura, con la misma filosofía que `stats`.
+//! These are not laws: they are **lenses**. All the physics lives in
+//! `physics/`; here we only measure consequences of the laws to observe
+//! whether structure emerges (condensation, aggregates, order). Nothing in
+//! here feeds the simulation: it is pure observation, with the same
+//! philosophy as `stats`.
 
 use crate::components::AtomType;
 use crate::math::Vec3;
 use crate::physics::forces::sigma;
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
 
-/// Factor de "contacto" para el análisis de agregados: dos átomos pertenecen
-/// al mismo cluster cuando `r < BOND_FACTOR · σ_ij`. `1.5·σ` está dentro del
-/// pozo atractivo del potencial LJ (cuyo mínimo vive en `1.12·σ`).
+/// "Contact" factor for the aggregate analysis: two atoms belong to the same
+/// cluster when `r < BOND_FACTOR · σ_ij`. `1.5·σ` is inside the attractive
+/// well of the LJ potential (whose minimum lives at `1.12·σ`).
 pub const BOND_FACTOR: f64 = 1.5;
 
-/// Función de distribución radial `g(r)` del sistema.
+/// Radial distribution function `g(r)` of the system.
 ///
-/// Normalizada para que `g(r) → 1` en un gas ideal: cada shell se divide por
-/// el número esperado de vecinos de un gas homogéneo a la densidad media.
+/// Normalized so that `g(r) → 1` in an ideal gas: each shell is divided by
+/// the expected number of neighbors of a homogeneous gas at the mean density.
 #[derive(Debug, Clone)]
 pub struct RadialDistribution {
-    /// Distancia máxima considerada (≤ mitad del lado más corto del toro).
+    /// Maximum distance considered (≤ half of the shortest side of the torus).
     pub r_max: f64,
-    /// Ancho de cada bin.
+    /// Width of each bin.
     pub dr: f64,
-    /// `g(r)` por bin (bin `i` centrado en `(i + 0.5)·dr`).
+    /// `g(r)` per bin (bin `i` centered at `(i + 0.5)·dr`).
     pub bins: Vec<f64>,
 }
 
 impl RadialDistribution {
-    /// Máximo de `g(r)` en la ventana `[from, to]`: `(r, g)`. Con `to` por
-    /// debajo del apilamiento del toro (≈ `L/2`), captura la capa de
-    /// coordinación (primer vecino). Un pico alto y definido revela orden
-    /// local (líquido/sólido); su ausencia, un gas.
+    /// Maximum of `g(r)` in the window `[from, to]`: `(r, g)`. With `to`
+    /// below the torus stacking (≈ `L/2`), it captures the coordination
+    /// shell (first neighbor). A high, well-defined peak reveals local order
+    /// (liquid/solid); its absence, a gas.
     pub fn peak_in(&self, from: f64, to: f64) -> Option<(f64, f64)> {
         let mut best: Option<(f64, f64)> = None;
         for (i, &g) in self.bins.iter().enumerate() {
@@ -49,11 +50,11 @@ impl RadialDistribution {
     }
 }
 
-/// Construye `g(r)` a partir de las partículas y el tamaño del mundo.
+/// Builds `g(r)` from the particles and the world size.
 ///
-/// `r_max` se recorta a `min(size)/2`: en un toro las distancias de imagen
-/// mínima solo son exactas hasta la mitad del lado más corto. El grid
-/// espacial evita el doble loop O(n²).
+/// `r_max` is clipped to `min(size)/2`: on a torus the minimum-image
+/// distances are only exact up to half of the shortest side. The spatial
+/// grid avoids the O(n²) double loop.
 pub fn radial_distribution(
     particles: &[Particle],
     world_size: Vec3,
@@ -91,32 +92,32 @@ pub fn radial_distribution(
         let r_lo = i as f64 * dr;
         let r_hi = r_lo + dr;
         let shell = 4.0 / 3.0 * std::f64::consts::PI * (r_hi * r_hi * r_hi - r_lo * r_lo * r_lo);
-        // Pares no ordenados esperados en la shell de un gas homogéneo: el
-        // grid reporta cada par una sola vez, así que N(N−1)/2.
+        // Unordered pairs expected in the shell of a homogeneous gas: the
+        // grid reports each pair only once, so N(N−1)/2.
         let expected = (n * (n - 1)) as f64 * 0.5 * shell / vol;
         bins[i] = c as f64 / expected.max(f64::MIN_POSITIVE);
     }
     RadialDistribution { r_max, dr, bins }
 }
 
-/// Resumen de agregados detectados con friends-of-friends.
+/// Summary of aggregates detected with friends-of-friends.
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
 pub struct ClusterStats {
-    /// Clusters de un solo átomo.
+    /// Clusters of a single atom.
     pub monomers: usize,
-    /// Clusters de ≥ 2 átomos.
+    /// Clusters of ≥ 2 atoms.
     pub aggregates: usize,
-    /// Tamaño del agregado más grande.
+    /// Size of the largest aggregate.
     pub largest: usize,
-    /// Tamaño medio sobre todos los clusters (incluidos los monómeros).
+    /// Mean size over all clusters (including monomers).
     pub mean_size: f64,
-    /// Pares de átomos en contacto (aristas del grafo de agregación).
+    /// Atom pairs in contact (edges of the aggregation graph).
     pub bound_pairs: usize,
 }
 
-/// Detecta agregados: dos átomos pertenecen al mismo cluster si están a
-/// `r < bond_factor · σ_ij` (σ_ij por mezcla de Lorentz). Union-find con
-/// compresión de caminos sobre los pares del grid (que actúa como superset).
+/// Detects aggregates: two atoms belong to the same cluster if they are at
+/// `r < bond_factor · σ_ij` (σ_ij by Lorentz mixing). Union-find with path
+/// compression over the grid pairs (which acts as a superset).
 pub fn clusters(
     particles: &[Particle],
     types: &[AtomType],
@@ -130,7 +131,7 @@ pub fn clusters(
     }
     debug_assert_eq!(particles.len(), types.len());
 
-    // Sigma de cada partícula y sigma máximo (cutoff del grid: superset).
+    // Sigma of each particle and maximum sigma (grid cutoff: superset).
     let sigmas: Vec<f64> = types.iter().map(|&t| sigma(t)).collect();
     let max_sigma = sigmas.iter().copied().fold(0.0, f64::max);
     let cutoff = (bond_factor.max(0.1) * max_sigma).max(1e-9);
@@ -181,7 +182,7 @@ pub fn clusters(
     }
 }
 
-/// Unión por rango con compresión de caminos.
+/// Union by rank with path compression.
 fn union(parent: &mut [usize], rank: &mut [u32], a: usize, b: usize) {
     let ra = find(parent, a);
     let rb = find(parent, b);
@@ -195,7 +196,7 @@ fn union(parent: &mut [usize], rank: &mut [u32], a: usize, b: usize) {
     }
 }
 
-/// Raíz con compresión de caminos.
+/// Root with path compression.
 fn find(parent: &mut [usize], mut x: usize) -> usize {
     while parent[x] != x {
         parent[x] = parent[parent[x]];
@@ -222,8 +223,8 @@ mod tests {
     }
 
     #[test]
-    fn g_r_de_un_par_pica_en_la_distancia() {
-        // Un único par a distancia d → todo el peso en el bin de r≈d.
+    fn g_r_of_a_pair_peaks_at_the_distance() {
+        // A single pair at distance d → all the weight in the bin at r≈d.
         let world = Vec3::new(32.0, 32.0, 32.0);
         let d = 1.7;
         let particles = vec![
@@ -232,13 +233,13 @@ mod tests {
         ];
         let g = radial_distribution(&particles, world, 4.0, 400);
         assert!((g.dr - 0.01).abs() < 1e-12);
-        let (r_peak, g_peak) = g.peak_in(0.5, 3.0).expect("debe haber un pico");
-        assert!((r_peak - d).abs() < 0.03, "pico en r={r_peak}, esperado ~{d}");
-        assert!(g_peak > 1_000.0, "un par concentrado debe disparar g(r): {g_peak}");
+        let (r_peak, g_peak) = g.peak_in(0.5, 3.0).expect("there must be a peak");
+        assert!((r_peak - d).abs() < 0.03, "peak at r={r_peak}, expected ~{d}");
+        assert!(g_peak > 1_000.0, "a concentrated pair must spike g(r): {g_peak}");
     }
 
     #[test]
-    fn g_r_de_gas_aleatorio_es_aproximadamente_uno() {
+    fn g_r_of_random_gas_is_approximately_one() {
         let world = Vec3::new(32.0, 32.0, 32.0);
         let mut rng = Rng::new(7);
         let particles: Vec<Particle> = (0..400)
@@ -253,14 +254,14 @@ mod tests {
         let mean = g.bins.iter().sum::<f64>() / g.bins.len() as f64;
         assert!(
             (0.8..=1.2).contains(&mean),
-            "gas ideal → g≈1, se obtuvo {mean}"
+            "ideal gas → g≈1, got {mean}"
         );
     }
 
     #[test]
-    fn clusters_detecta_dimeros_y_monomeros() {
-        // Dos dímeros de H a distancia de enlace (2.2 < 1.5·σ_H = 2.4) y un
-        // par de monómeros aislados.
+    fn clusters_detect_dimers_and_monomers() {
+        // Two H dimers at bond distance (2.2 < 1.5·σ_H = 2.4) and a pair of
+        // isolated monomers.
         let world = Vec3::new(64.0, 64.0, 64.0);
         let data = [
             hydrogen_at(Vec3::new(10.0, 10.0, 10.0)),
@@ -281,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn clusters_vacio_y_aislados() {
+    fn clusters_empty_and_isolated() {
         let world = Vec3::new(64.0, 64.0, 64.0);
         let empty = clusters(&[], &[], world, BOND_FACTOR);
         assert_eq!(empty.largest, 0);

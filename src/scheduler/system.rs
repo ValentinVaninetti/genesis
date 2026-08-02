@@ -1,9 +1,9 @@
-//! Definición del trait `System` y del contexto de ejecución.
+//! Definition of the `System` trait and the execution context.
 //!
-//! Un sistema es una **ley** o **transformación** que se ejecuta cada tick
-//! sobre el `World`. Cada sistema declara explícitamente qué componentes lee
-//! y qué escribe: es la información que permite al scheduler validar el orden,
-//! detectar conflictos y (en el futuro) ejecutar etapas en paralelo.
+//! A system is a **law** or **transformation** that runs every tick over the
+//! `World`. Each system explicitly declares which components it reads and
+//! which it writes: that is the information that lets the scheduler validate
+//! the order, detect conflicts and (in the future) run stages in parallel.
 
 use crate::ecs::{ComponentId, Resources, World};
 use crate::rng::Rng;
@@ -11,16 +11,16 @@ use crate::stats::StatsCollector;
 use crate::universe::Time;
 use std::any::{Any, TypeId};
 
-/// Acceso declarado por un sistema a componentes y recursos.
+/// Access declared by a system to components and resources.
 #[derive(Debug, Clone, Default)]
 pub struct Access {
-    /// Componentes leídos (no modificados).
+    /// Components read (not modified).
     pub reads: Vec<ComponentId>,
-    /// Componentes escritos.
+    /// Components written.
     pub writes: Vec<ComponentId>,
-    /// Recursos leídos.
+    /// Resources read.
     pub resources_read: Vec<TypeId>,
-    /// Recursos escritos.
+    /// Resources written.
     pub resources_write: Vec<TypeId>,
 }
 
@@ -45,8 +45,8 @@ impl Access {
         self
     }
 
-    /// Dos accesos entran en conflicto si comparten un recurso o componente
-    /// y al menos uno de los dos lo escribe.
+    /// Two accesses conflict if they share a resource or component and at
+    /// least one of the two writes it.
     pub fn conflicts_with(&self, other: &Access) -> bool {
         let component_conflict = self
             .writes
@@ -68,30 +68,30 @@ impl Access {
     }
 }
 
-/// Contexto de ejecución de un sistema.
+/// Execution context of a system.
 ///
-/// Da acceso a todo lo que una ley necesita sin acoplarse al `Universe`
-/// completo: mundo, recursos, azar, tiempo y estadísticas.
+/// Gives access to everything a law needs without coupling to the full
+/// `Universe`: world, resources, randomness, time and statistics.
 pub struct SystemContext<'a> {
     pub world: &'a mut World,
     pub resources: &'a mut Resources,
     pub rng: &'a mut Rng,
     pub time: &'a Time,
     pub stats: &'a mut StatsCollector,
-    /// Delta de tiempo de este tick.
+    /// Time delta of this tick.
     pub dt: f64,
 }
 
-/// Una ley del universo. Debe ser determinista salvo por `ctx.rng`.
+/// A law of the universe. It must be deterministic except for `ctx.rng`.
 pub trait System: Send + Sync {
-    /// Nombre corto y estable (para logs y debug).
+    /// Short and stable name (for logs and debug).
     fn name(&self) -> &'static str;
 
-    /// Declaración de acceso (por defecto: sin acceso declarado).
+    /// Access declaration (by default: no declared access).
     fn access(&self) -> Access {
         Access::default()
     }
 
-    /// Ejecuta la ley.
+    /// Runs the law.
     fn run(&mut self, ctx: &mut SystemContext<'_>);
 }

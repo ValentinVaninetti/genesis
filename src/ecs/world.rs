@@ -1,4 +1,4 @@
-//! El `World`: almacén de arquetipos, entidades y consultas.
+//! The `World`: store of archetypes, entities and queries.
 
 use crate::ecs::archetype::{Archetype, ArchetypeId, ColumnImpl};
 use crate::ecs::component::{new_column, Component, ComponentId};
@@ -7,39 +7,40 @@ use rayon::prelude::*;
 use std::any::TypeId;
 use std::collections::HashMap;
 
-/// Tamaño de chunk para iteraciones paralelas dentro de un arquetipo.
+/// Chunk size for parallel iterations inside an archetype.
 const PAR_CHUNK: usize = 64;
 
-/// Ubicación física de una entidad dentro del `World`.
+/// Physical location of an entity inside the `World`.
 #[derive(Debug, Clone, Copy)]
 pub struct Location {
     pub(crate) archetype: ArchetypeId,
     pub(crate) row: u32,
 }
 
-/// Almacén principal de la simulación.
+/// Main store of the simulation.
 ///
-/// Organiza entidades en arquetipos (SoA) y provee:
-/// - ciclo de vida de entidades (`spawn`, `despawn`, `restore_entity`),
-/// - acceso a componentes (`get`, `get_mut`, `insert`, `remove`),
-/// - consultas secuenciales y paralelas (`for_each1_*`, `for_each2_mut`, `par_*`),
-/// - medición de memoria.
+/// Organizes entities into archetypes (SoA) and provides:
+/// - entity lifecycle (`spawn`, `despawn`, `restore_entity`),
+/// - component access (`get`, `get_mut`, `insert`, `remove`),
+/// - sequential and parallel queries (`for_each1_*`, `for_each2_mut`, `par_*`),
+/// - memory measurement.
 #[derive(Default)]
 pub struct World {
     pub(crate) archetypes: Vec<Archetype>,
-    /// Set de componentes (ordenado) -> id de arquetipo.
+    /// Component set (sorted) -> archetype id.
     archetype_index: HashMap<Vec<ComponentId>, ArchetypeId>,
-    /// Por índice de entidad: su ubicación actual.
+    /// Per entity index: its current location.
     entities: Vec<Option<Location>>,
-    /// Por índice de entidad: generación vigente.
+    /// Per entity index: current generation.
     generations: Vec<EntityGeneration>,
-    /// Índices libres para reutilizar.
+    /// Free indices to reuse.
     free: Vec<u32>,
     len_alive: usize,
 }
 
 impl World {
-    /// Crea un `World` vacío (con el arquetipo "sin componentes" ya creado).
+    /// Creates an empty `World` (with the "no components" archetype already
+    /// created).
     pub fn new() -> Self {
         let mut w = Self::default();
         w.archetype_for(&[]);
@@ -47,10 +48,10 @@ impl World {
     }
 
     // ------------------------------------------------------------------
-    // Entidades
+    // Entities
     // ------------------------------------------------------------------
 
-    /// Crea una entidad sin componentes y devuelve su id.
+    /// Creates an entity without components and returns its id.
     pub fn spawn(&mut self) -> EntityId {
         let empty = self.archetype_for(&[]);
         let index = if let Some(i) = self.free.pop() {
@@ -73,18 +74,18 @@ impl World {
         eid
     }
 
-    /// Crea una entidad en un índice/generación determinados.
+    /// Creates an entity at a given index/generation.
     ///
-    /// Reservado para la deserialización de snapshots, donde los ids deben
-    /// preservarse. Idempotente: si el índice ya está vivo con la misma
-    /// generación, devuelve la entidad existente sin duplicarla.
+    /// Reserved for snapshot deserialization, where ids must be preserved.
+    /// Idempotent: if the index is already alive with the same generation, it
+    /// returns the existing entity without duplicating it.
     pub fn restore_entity(&mut self, index: u32, generation: EntityGeneration) -> EntityId {
         if (index as usize) < self.entities.len()
             && let Some(_loc) = self.entities[index as usize]
         {
             assert_eq!(
                 self.generations[index as usize], generation,
-                "restore_entity: índice {index} vivo con otra generación"
+                "restore_entity: index {index} alive with another generation"
             );
             return EntityId::new(index, generation);
         }
@@ -107,8 +108,8 @@ impl World {
         eid
     }
 
-    /// Destruye una entidad (y todos sus componentes). Devuelve `false` si el
-    /// id estaba obsoleto o no existía.
+    /// Destroys an entity (and all its components). Returns `false` if the id
+    /// was stale or did not exist.
     pub fn despawn(&mut self, entity: EntityId) -> bool {
         let Some(loc) = self.locate(entity) else {
             return false;
@@ -135,12 +136,12 @@ impl World {
         true
     }
 
-    /// ¿Está viva la entidad (id vigente)?
+    /// Is the entity alive (id valid)?
     pub fn is_alive(&self, entity: EntityId) -> bool {
         self.locate(entity).is_some()
     }
 
-    /// Cantidad de entidades vivas.
+    /// Number of alive entities.
     pub fn len(&self) -> usize {
         self.len_alive
     }
@@ -149,22 +150,22 @@ impl World {
         self.len_alive == 0
     }
 
-    /// Cantidad de slots de índice de entidad (máximo índice + 1).
+    /// Number of entity index slots (max index + 1).
     ///
-    /// Los índices no se compactan al destruir entidades, así que un buffer
-    /// indexado por `EntityId::index` debe dimensionarse con este valor.
+    /// Indices are not compacted when entities are destroyed, so a buffer
+    /// indexed by `EntityId::index` must be sized with this value.
     pub fn entity_capacity(&self) -> usize {
         self.entities.len()
     }
 
-    /// Iterador sobre todas las entidades vivas.
+    /// Iterator over all alive entities.
     pub fn iter_entities(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.archetypes
             .iter()
             .flat_map(|a| a.entities.iter().copied())
     }
 
-    /// Ubicación de la entidad, validando la generación.
+    /// Location of the entity, validating the generation.
     pub(crate) fn locate(&self, entity: EntityId) -> Option<Location> {
         let idx = entity.index() as usize;
         let loc = *self.entities.get(idx)?;
@@ -172,13 +173,13 @@ impl World {
     }
 
     // ------------------------------------------------------------------
-    // Componentes
+    // Components
     // ------------------------------------------------------------------
 
-    /// Inserta (o reemplaza) el componente `T` en la entidad.
+    /// Inserts (or replaces) the component `T` in the entity.
     ///
-    /// Si la entidad no lo tenía, se traslada a otro arquetipo moviendo sus
-    /// datos de forma contigua (swap-remove), sin copiar.
+    /// If the entity did not have it, it is moved to another archetype moving
+    /// its data contiguously (swap-remove), without copying.
     pub fn insert<T: Component>(&mut self, entity: EntityId, value: T) {
         let Some(loc) = self.locate(entity) else {
             return;
@@ -186,17 +187,17 @@ impl World {
         let row = loc.row as usize;
         let src_id = loc.archetype;
 
-        // Reemplazo en el lugar (la entidad ya tenía el componente).
+        // In-place replacement (the entity already had the component).
         if let Some(pos) = self.archetypes[src_id as usize].position_of(T::ID) {
             let col = self.archetypes[src_id as usize].columns[pos]
                 .as_any_mut()
                 .downcast_mut::<ColumnImpl<T>>()
-                .expect("insert: columna de tipo T");
+                .expect("insert: column of type T");
             col.data[row] = value;
             return;
         }
 
-        // Migración a un arquetipo con el nuevo componente.
+        // Migration to an archetype with the new component.
         let mut new_set = self.archetypes[src_id as usize].components.clone();
         new_set.push(T::ID);
         new_set.sort_unstable();
@@ -231,7 +232,8 @@ impl World {
         });
     }
 
-    /// Remueve el componente `T` de la entidad, devolviendo el valor si existía.
+    /// Removes the component `T` from the entity, returning the value if it
+    /// existed.
     pub fn remove<T: Component>(&mut self, entity: EntityId) -> Option<T> {
         let loc = self.locate(entity)?;
         let row = loc.row as usize;
@@ -254,12 +256,12 @@ impl World {
                 let src_col = src.column_mut(*cid);
                 dst_col.push_row(src_col, row);
             }
-            // T no está en dst_ids; su valor sigue en la fila `row`.
-            let t_pos = src.position_of(T::ID).expect("T presente en src");
+            // T is not in dst_ids; its value still lives in row `row`.
+            let t_pos = src.position_of(T::ID).expect("T present in src");
             let col = src.columns[t_pos]
                 .as_any_mut()
                 .downcast_mut::<ColumnImpl<T>>()
-                .expect("columna T");
+                .expect("column T");
             removed = col.data.swap_remove(row);
 
             let displaced = src.remove_row_swap(row);
@@ -279,7 +281,7 @@ impl World {
         Some(removed)
     }
 
-    /// Acceso inmutable a un componente.
+    /// Immutable access to a component.
     pub fn get<T: Component>(&self, entity: EntityId) -> Option<&T> {
         let loc = self.locate(entity)?;
         let arch = &self.archetypes[loc.archetype as usize];
@@ -288,7 +290,7 @@ impl World {
         Some(&col.data[loc.row as usize])
     }
 
-    /// Acceso mutable a un componente.
+    /// Mutable access to a component.
     pub fn get_mut<T: Component>(&mut self, entity: EntityId) -> Option<&mut T> {
         let loc = self.locate(entity)?;
         let arch = &mut self.archetypes[loc.archetype as usize];
@@ -297,20 +299,20 @@ impl World {
         Some(&mut col.data[loc.row as usize])
     }
 
-    /// ¿La entidad tiene el componente `T`?
+    /// Does the entity have the component `T`?
     pub fn has<T: Component>(&self, entity: EntityId) -> bool {
         self.get::<T>(entity).is_some()
     }
 
     // ------------------------------------------------------------------
-    // Consultas
+    // Queries
     // ------------------------------------------------------------------
 
-    /// Itera todas las entidades con el componente `T` (inmutable).
+    /// Iterates all entities with the component `T` (immutable).
     pub fn for_each1<T: Component>(&self, mut f: impl FnMut(EntityId, &T)) {
         for arch in &self.archetypes {
             if let Some(pos) = arch.position_of(T::ID) {
-                let col = arch.columns[pos].as_any().downcast_ref::<ColumnImpl<T>>().expect("columna T");
+                let col = arch.columns[pos].as_any().downcast_ref::<ColumnImpl<T>>().expect("column T");
                 for (row, value) in col.data.iter().enumerate() {
                     f(arch.entities[row], value);
                 }
@@ -318,9 +320,9 @@ impl World {
         }
     }
 
-    /// Itera entidades con los componentes `A` y `B` (ambos inmutables).
+    /// Iterates entities with the components `A` and `B` (both immutable).
     pub fn for_each2<A: Component, B: Component>(&self, mut f: impl FnMut(EntityId, &A, &B)) {
-        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A y B deben ser distintos");
+        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A and B must be different");
         for arch in &self.archetypes {
             let (Some(pa), Some(pb)) = (arch.position_of(A::ID), arch.position_of(B::ID)) else {
                 continue;
@@ -328,26 +330,26 @@ impl World {
             let ca = arch.columns[pa]
                 .as_any()
                 .downcast_ref::<ColumnImpl<A>>()
-                .expect("columna A");
+                .expect("column A");
             let cb = arch.columns[pb]
                 .as_any()
                 .downcast_ref::<ColumnImpl<B>>()
-                .expect("columna B");
+                .expect("column B");
             for (row, (a, b)) in ca.data.iter().zip(cb.data.iter()).enumerate() {
                 f(arch.entities[row], a, b);
             }
         }
     }
 
-    /// Itera entidades con los componentes `A`, `B` y `C` (todos inmutables).
+    /// Iterates entities with the components `A`, `B` and `C` (all immutable).
     pub fn for_each3<A: Component, B: Component, C: Component>(
         &self,
         mut f: impl FnMut(EntityId, &A, &B, &C),
     ) {
         let (ta, tb, tc) = (TypeId::of::<A>(), TypeId::of::<B>(), TypeId::of::<C>());
-        assert_ne!(ta, tb, "A y B deben ser distintos");
-        assert_ne!(ta, tc, "A y C deben ser distintos");
-        assert_ne!(tb, tc, "B y C deben ser distintos");
+        assert_ne!(ta, tb, "A and B must be different");
+        assert_ne!(ta, tc, "A and C must be different");
+        assert_ne!(tb, tc, "B and C must be different");
         for arch in &self.archetypes {
             let (Some(pa), Some(pb), Some(pc)) = (
                 arch.position_of(A::ID),
@@ -359,15 +361,15 @@ impl World {
             let ca = arch.columns[pa]
                 .as_any()
                 .downcast_ref::<ColumnImpl<A>>()
-                .expect("columna A");
+                .expect("column A");
             let cb = arch.columns[pb]
                 .as_any()
                 .downcast_ref::<ColumnImpl<B>>()
-                .expect("columna B");
+                .expect("column B");
             let cc = arch.columns[pc]
                 .as_any()
                 .downcast_ref::<ColumnImpl<C>>()
-                .expect("columna C");
+                .expect("column C");
             for (row, ((a, b), c)) in ca
                 .data
                 .iter()
@@ -380,7 +382,7 @@ impl World {
         }
     }
 
-    /// Itera todas las entidades con el componente `T` (mutable).
+    /// Iterates all entities with the component `T` (mutable).
     pub fn for_each1_mut<T: Component>(&mut self, mut f: impl FnMut(EntityId, &mut T)) {
         for arch in self.archetypes.iter_mut() {
             let Some(pos) = arch.position_of(T::ID) else {
@@ -389,7 +391,7 @@ impl World {
             let crate::ecs::archetype::Archetype {
                 entities, columns, ..
             } = arch;
-            let col = columns[pos].as_any_mut().downcast_mut::<ColumnImpl<T>>().expect("columna T");
+            let col = columns[pos].as_any_mut().downcast_mut::<ColumnImpl<T>>().expect("column T");
             let ents = entities.as_slice();
             for (row, value) in col.data.iter_mut().enumerate() {
                 f(ents[row], value);
@@ -397,12 +399,12 @@ impl World {
         }
     }
 
-    /// Itera entidades con los componentes `A` y `B` (ambos mutables).
+    /// Iterates entities with the components `A` and `B` (both mutable).
     ///
-    /// Requiere `A != B` (para iterar el mismo componente dos veces, usar
+    /// Requires `A != B` (to iterate the same component twice, use
     /// `for_each1`).
     pub fn for_each2_mut<A: Component, B: Component>(&mut self, mut f: impl FnMut(EntityId, &mut A, &mut B)) {
-        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A y B deben ser distintos");
+        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A and B must be different");
         for arch in self.archetypes.iter_mut() {
             let (Some(pa), Some(pb)) = (arch.position_of(A::ID), arch.position_of(B::ID)) else {
                 continue;
@@ -414,13 +416,13 @@ impl World {
             let (left, right) = columns.split_at_mut(hi);
             let (ca, cb) = if pa < pb {
                 (
-                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("columna A"),
-                    right[0].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("columna B"),
+                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("column A"),
+                    right[0].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("column B"),
                 )
             } else {
                 (
-                    right[0].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("columna A"),
-                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("columna B"),
+                    right[0].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("column A"),
+                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("column B"),
                 )
             };
             let ents = entities.as_slice();
@@ -430,7 +432,7 @@ impl World {
         }
     }
 
-    /// Itera en paralelo (por chunks) entidades con el componente `T`.
+    /// Iterates in parallel (by chunks) entities with the component `T`.
     pub fn par_for_each1_mut<T: Component>(&mut self, f: impl Fn(EntityId, &mut T) + Sync + Send) {
         for arch in self.archetypes.iter_mut() {
             let Some(pos) = arch.position_of(T::ID) else {
@@ -439,7 +441,7 @@ impl World {
             let crate::ecs::archetype::Archetype {
                 entities, columns, ..
             } = arch;
-            let col = columns[pos].as_any_mut().downcast_mut::<ColumnImpl<T>>().expect("columna T");
+            let col = columns[pos].as_any_mut().downcast_mut::<ColumnImpl<T>>().expect("column T");
             let ents = entities.as_slice();
             col.data
                 .par_chunks_mut(PAR_CHUNK)
@@ -452,9 +454,9 @@ impl World {
         }
     }
 
-    /// Itera en paralelo (por chunks) entidades con los componentes `A` y `B`.
+    /// Iterates in parallel (by chunks) entities with the components `A` and `B`.
     pub fn par_for_each2_mut<A: Component, B: Component>(&mut self, f: impl Fn(EntityId, &mut A, &mut B) + Sync + Send) {
-        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A y B deben ser distintos");
+        assert_ne!(TypeId::of::<A>(), TypeId::of::<B>(), "A and B must be different");
         for arch in self.archetypes.iter_mut() {
             let (Some(pa), Some(pb)) = (arch.position_of(A::ID), arch.position_of(B::ID)) else {
                 continue;
@@ -466,13 +468,13 @@ impl World {
             let (left, right) = columns.split_at_mut(hi);
             let (ca, cb) = if pa < pb {
                 (
-                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("columna A"),
-                    right[0].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("columna B"),
+                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("column A"),
+                    right[0].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("column B"),
                 )
             } else {
                 (
-                    right[0].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("columna A"),
-                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("columna B"),
+                    right[0].as_any_mut().downcast_mut::<ColumnImpl<A>>().expect("column A"),
+                    left[lo].as_any_mut().downcast_mut::<ColumnImpl<B>>().expect("column B"),
                 )
             };
             let ents = entities.as_slice();
@@ -489,11 +491,11 @@ impl World {
     }
 
     // ------------------------------------------------------------------
-    // Internos
+    // Internals
     // ------------------------------------------------------------------
 
-    /// Devuelve el id del arquetipo para un set de componentes, creándolo si
-    /// no existe.
+    /// Returns the archetype id for a component set, creating it if it does
+    /// not exist.
     pub(crate) fn archetype_for(&mut self, set: &[ComponentId]) -> ArchetypeId {
         if let Some(id) = self.archetype_index.get(set) {
             return *id;
@@ -508,17 +510,17 @@ impl World {
         id
     }
 
-    /// Cantidad de arquetipos.
+    /// Number of archetypes.
     pub fn archetype_count(&self) -> usize {
         self.archetypes.len()
     }
 
-    /// Acceso a los arquetipos (para inspección/debug).
+    /// Access to the archetypes (for inspection/debug).
     pub fn archetypes(&self) -> &[Archetype] {
         &self.archetypes
     }
 
-    /// Bytes aproximados ocupados por el `World`.
+    /// Approximate bytes occupied by the `World`.
     pub fn memory_bytes(&self) -> usize {
         let mut total = 0usize;
         for arch in &self.archetypes {
@@ -539,7 +541,7 @@ impl World {
         total
     }
 
-    /// Vacía por completo el mundo (restablece el arquetipo vacío).
+    /// Completely empties the world (resets the empty archetype).
     pub fn clear(&mut self) {
         self.archetypes.clear();
         self.archetype_index.clear();
@@ -551,16 +553,16 @@ impl World {
     }
 }
 
-/// Dos arquetipos distintos con préstamos mutables disjuntos.
+/// Two distinct archetypes with disjoint mutable borrows.
 ///
-/// Función libre (y no método) para que el borrow se limite al campo
-/// `archetypes` y permita acceder a otros campos de `World` en paralelo.
+/// Free function (not a method) so that the borrow is limited to the
+/// `archetypes` field and other `World` fields can be accessed in parallel.
 fn split_archetypes(
     archetypes: &mut [Archetype],
     a: ArchetypeId,
     b: ArchetypeId,
 ) -> (&mut Archetype, &mut Archetype) {
-    debug_assert_ne!(a, b, "no se puede dividir el mismo arquetipo");
+    debug_assert_ne!(a, b, "cannot split the same archetype");
     let (lo, hi) = (a.min(b) as usize, a.max(b) as usize);
     let (left, right) = archetypes.split_at_mut(hi);
     if a < b {
@@ -583,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn spawn_despawn_y_generaciones() {
+    fn spawn_despawn_and_generations() {
         let mut w = world();
         let a = w.spawn();
         let b = w.spawn();
@@ -592,9 +594,9 @@ mod tests {
 
         assert!(w.despawn(a));
         assert!(!w.is_alive(a));
-        assert!(!w.despawn(a)); // id obsoleto
+        assert!(!w.despawn(a)); // stale id
 
-        // El índice se recicla con generación incrementada.
+        // The index is recycled with an incremented generation.
         let c = w.spawn();
         assert_eq!(c.index(), a.index());
         assert_ne!(c.generation(), a.generation());
@@ -611,9 +613,9 @@ mod tests {
 
         w.insert(e, Position(Vec3::new(1.0, 2.0, 3.0)));
         assert_eq!(w.get::<Position>(e).unwrap().x, 1.0);
-        assert_eq!(w.archetype_count(), 2); // vacío + [Position]
+        assert_eq!(w.archetype_count(), 2); // empty + [Position]
 
-        // Reemplazo en el lugar no cambia arquetipo.
+        // In-place replacement does not change archetype.
         w.insert(e, Position(Vec3::new(9.0, 9.0, 9.0)));
         assert_eq!(w.get::<Position>(e).unwrap().x, 9.0);
         assert_eq!(w.archetype_count(), 2);
@@ -624,14 +626,14 @@ mod tests {
     }
 
     #[test]
-    fn migracion_entre_arquetipos_mantiene_alineacion() {
+    fn migration_between_archetypes_keeps_alignment() {
         let mut w = world();
         let e = w.spawn();
         w.insert(e, Position(Vec3::new(1.0, 0.0, 0.0)));
         w.insert(e, Velocity(Vec3::new(2.0, 0.0, 0.0)));
         w.insert(e, Mass(5.0));
 
-        // Los tres componentes apuntan a la misma entidad y fila.
+        // The three components point to the same entity and row.
         let mut seen = 0;
         w.for_each2_mut::<Position, Velocity>(|id, pos, vel| {
             assert_eq!(id, e);
@@ -641,7 +643,7 @@ mod tests {
         });
         assert_eq!(seen, 1);
 
-        // Quitar en el medio y verificar integridad de las demás entidades.
+        // Remove from the middle and verify the integrity of the other entities.
         let other = w.spawn();
         w.insert(other, Position(Vec3::ZERO));
         w.insert(other, Velocity(Vec3::ZERO));
@@ -651,14 +653,14 @@ mod tests {
             assert!(id == e || id == other);
         });
 
-        // El valor de la primera entidad sobrevivió intacto.
+        // The value of the first entity survived intact.
         assert_eq!(w.get::<Position>(e).unwrap().x, 1.0);
         assert_eq!(w.get::<Velocity>(e).unwrap().x, 2.0);
         assert_eq!(w.get::<Position>(other).unwrap().x, 0.0);
     }
 
     #[test]
-    fn despawn_swap_remove_conserva_datos() {
+    fn despawn_swap_remove_preserves_data() {
         let mut w = world();
         let ids: Vec<_> = (0..5).map(|i| {
             let e = w.spawn();
@@ -667,7 +669,7 @@ mod tests {
         })
         .collect();
 
-        // Eliminar entidades del medio fuerza swap-remove real.
+        // Removing entities from the middle forces a real swap-remove.
         assert!(w.despawn(ids[2]));
         assert!(w.despawn(ids[0]));
 
@@ -675,16 +677,16 @@ mod tests {
         w.for_each1::<Position>(|id, p| remaining.push((id, p.x)));
         assert_eq!(remaining.len(), 3);
 
-        // Cada superviviente conserva su posición original.
+        // Each survivor keeps its original position.
         for (id, x) in remaining {
             let expected = id.index() as f64;
-            assert_eq!(x, expected, "posición de {id} corrompida");
+            assert_eq!(x, expected, "position of {id} corrupted");
         }
         assert_eq!(w.len(), 3);
     }
 
     #[test]
-    fn par_equivale_a_secuencial() {
+    fn parallel_matches_sequential() {
         let mut w = world();
         let n = 1000;
         for i in 0..n {
@@ -693,12 +695,12 @@ mod tests {
             w.insert(e, Mass(1.0));
         }
 
-        // Secuencial: escalar X por 2.
+        // Sequential: scale X by 2.
         w.for_each2_mut::<Position, Mass>(|_, p, m| {
             p.x += m.0;
         });
 
-        // Paralela: escalar X por 3 y verificar que el resultado es exacto.
+        // Parallel: scale X by 3 and verify the result is exact.
         w.par_for_each2_mut::<Position, Mass>(|_, p, m| {
             p.x += m.0;
         });
@@ -710,7 +712,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_entity_preserva_ids() {
+    fn restore_entity_preserves_ids() {
         let mut w = world();
         let e = w.restore_entity(77, 5);
         assert_eq!(e.index(), 77);
@@ -721,12 +723,12 @@ mod tests {
     }
 
     #[test]
-    fn get_obsoleto_devuelve_none() {
+    fn stale_get_returns_none() {
         let mut w = world();
         let e = w.spawn();
         w.insert(e, Position(Vec3::ONE));
         assert!(w.despawn(e));
-        // Handle zombie: nada de datos corruptos, solo None.
+        // Zombie handle: no corrupt data, just None.
         assert!(w.get::<Position>(e).is_none());
     }
 }
