@@ -43,8 +43,12 @@ fn main() {
         universe.tick();
         if tick % report_every == 0 {
             let s = &universe.stats.snapshot;
+            let structure = s
+                .structure
+                .map(|x| format!(" | ag={} mon={} mayor={} lig={}", x.aggregates, x.monomers, x.largest, x.bound_pairs))
+                .unwrap_or_default();
             println!(
-                "[tick {:>9}] t={:>10.3}s | entidades={:>9} | E={:>12.3} | K={:>12.3} | V={:>12.3} | E_avg={:>8.3} | T_avg={:>7.1} | |v|={:>6.3} | colisiones={:>8} | fps={:>7.1} | mem={:>8}kB",
+                "[tick {:>9}] t={:>10.3}s | entidades={:>9} | E={:>12.3} | K={:>12.3} | V={:>12.3} | E_avg={:>8.3} | T_avg={:>7.1} | |v|={:>6.3} | colisiones={:>8} | fps={:>7.1} | mem={:>8}kB{}",
                 s.tick,
                 s.time,
                 s.entities,
@@ -57,6 +61,7 @@ fn main() {
                 s.collisions,
                 s.fps,
                 s.memory_bytes / 1024,
+                structure,
             );
         }
     }
@@ -67,6 +72,7 @@ fn main() {
     println!("> {}", universe.status_line());
     println!("> histograma de velocidades:");
     print_histogram(&universe);
+    print_structure(&universe);
 
     // Demo de persistencia: guardar y retomar el universo.
     let save_path = "genesis-snapshot.bin";
@@ -82,6 +88,39 @@ fn main() {
             loaded.world.len(),
         ),
         Err(e) => eprintln!("! error al recargar: {e}"),
+    }
+}
+
+/// Imprime la estructura emergente: agregados y primer pico de g(r).
+fn print_structure(universe: &Universe) {
+    let clusters = universe.cluster_analysis();
+    println!("> estructura emergente (observación, no ley):");
+    println!(
+        "    agregados: {} | monómeros: {} | mayor: {} | pares ligados: {} | tamaño medio: {:.2}",
+        clusters.aggregates,
+        clusters.monomers,
+        clusters.largest,
+        clusters.bound_pairs,
+        clusters.mean_size,
+    );
+
+    let size = universe.config.universe.size;
+    let r_max = size.x.min(size.y).min(size.z) * 0.5;
+    let g = universe.radial_distribution(r_max, 512);
+    // Ventana de capa de coordinación: la mitad del rango evita el
+    // apilamiento de distancias del toro cerca de L/2.
+    match g.peak_in(0.5, r_max * 0.5) {
+        Some((r, value)) => println!(
+            "    g(r): primer vecino en r≈{r:.2} (g={value:.2}) → {}",
+            if value > 3.0 {
+                "orden local claro (fase condensada)"
+            } else if value > 1.5 {
+                "cierto orden local (líquido/agregados)"
+            } else {
+                "sin orden local (gas)"
+            },
+        ),
+        None => println!("    g(r): sin picos (sistema vacío)"),
     }
 }
 

@@ -60,6 +60,11 @@ fn element_index(t: AtomType) -> usize {
     }
 }
 
+/// Alcance `σ` de un elemento (unidades de simulación).
+pub fn sigma(t: AtomType) -> f64 {
+    ELEMENTS[element_index(t)].sigma
+}
+
 /// Parámetros de un par de tipos (`ε` ya en unidades de energía).
 #[derive(Debug, Clone, Copy)]
 pub struct LjPair {

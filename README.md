@@ -37,6 +37,10 @@ documenta las decisiones de arquitectura de la etapa 0 (la base).
      repulsión r⁻¹² explota numéricamente.
 - ✅ Observado: a baja temperatura el gas **se condensa** espontáneamente (V se
      vuelve muy negativo, el sistema se autocalienta con el calor latente).
+- ✅ **Análisis de estructura emergente** (observación, no leyes): g(r) con
+     normalización de gas ideal y detección de agregados con friends-of-friends
+     (`src/analysis/`). `StructureSystem` muestrea cada `stats.structure_interval`
+     ticks y el snapshot reporta agregados/monómeros/mayor/pares ligados.
 - ⏳ Visualización: **fuera del motor** (solo consola hoy).
 
 ```
@@ -136,6 +140,7 @@ src/
 ├── config/              # Config tipada (TOML)
 ├── serialization/       # Snapshot total (bincode)
 ├── stats/               # métricas + historial
+├── analysis/            # lentes: g(r) y agregados (observación, no leyes)
 ├── math/                # Vec3
 ├── rng/                 # RNG serializable (xoshiro256++)
 ├── physics/             # leyes: colisión elástica, LJ (tablas y switch), grid

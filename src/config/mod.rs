@@ -100,6 +100,8 @@ pub struct StatsConfig {
     pub histogram_bins: usize,
     /// Velocidad máxima del histograma (rango 0..max).
     pub histogram_max_speed: f64,
+    /// Cada cuántos ticks se muestrea la estructura (agregados).
+    pub structure_interval: u64,
 }
 
 impl Default for StatsConfig {
@@ -107,6 +109,7 @@ impl Default for StatsConfig {
         Self {
             histogram_bins: 32,
             histogram_max_speed: 10.0,
+            structure_interval: 100,
         }
     }
 }
@@ -245,4 +248,6 @@ enable_forces = true
 # Observación, no física: histograma de velocidades.
 histogram_bins = 32
 histogram_max_speed = 10.0
+# Cada cuántos ticks se miden los agregados (estructura emergente).
+structure_interval = 100
 "#;

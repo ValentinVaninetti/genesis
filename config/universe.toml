@@ -43,3 +43,5 @@ enable_forces = true
 # Observación, no física: histograma de velocidades.
 histogram_bins = 32
 histogram_max_speed = 10.0
+# Cada cuántos ticks se miden los agregados (estructura emergente).
+structure_interval = 100

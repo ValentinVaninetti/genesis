@@ -13,13 +13,14 @@ use crate::components::{Acceleration, AtomType, Charge, Mass, Position, Velocity
 use crate::config::Config;
 use crate::ecs::{Resources, World};
 use crate::math::Vec3;
+use crate::physics::grid::Particle;
 use crate::rng::Rng;
 use crate::scheduler::{Scheduler, SystemContext};
 use crate::serialization::{load_universe, save_universe, LoadError, SaveError, UniverseState};
-use crate::stats::{CollisionCounter, PotentialEnergy, StatsCollector};
+use crate::stats::{CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
 use crate::systems::{
     BoundarySystem, CollisionSystem, ForceSystem, MovementSystem, PositionDrift, StatsSystem,
-    VelocityHalfKick,
+    StructureSystem, VelocityHalfKick,
 };
 use std::fmt;
 use std::path::Path;
@@ -51,6 +52,14 @@ impl Universe {
         resources.insert(config.clone());
         resources.insert(CollisionCounter::default());
         resources.insert(PotentialEnergy::default());
+        resources.insert(StructureStats {
+            tick: 0,
+            monomers: 0,
+            aggregates: 0,
+            largest: 0,
+            mean_size: 0.0,
+            bound_pairs: 0,
+        });
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -77,6 +86,14 @@ impl Universe {
         resources.insert(config.clone());
         resources.insert(CollisionCounter::default());
         resources.insert(PotentialEnergy::default());
+        resources.insert(StructureStats {
+            tick: 0,
+            monomers: 0,
+            aggregates: 0,
+            largest: 0,
+            mean_size: 0.0,
+            bound_pairs: 0,
+        });
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -229,6 +246,40 @@ impl Universe {
         self.world.insert::<Acceleration>(e, Acceleration(Vec3::ZERO));
     }
 
+    /// Observables de análisis: partículas compactas + tipos atómicos.
+    fn observable_particles(&self) -> (Vec<Particle>, Vec<AtomType>) {
+        let mut particles = Vec::with_capacity(self.world.len());
+        let mut types = Vec::with_capacity(self.world.len());
+        self.world.for_each2::<Position, AtomType>(|e, pos, at| {
+            particles.push(Particle {
+                index: e.index(),
+                pos: pos.0,
+                vel: Vec3::ZERO,
+                mass: 0.0,
+            });
+            types.push(*at);
+        });
+        (particles, types)
+    }
+
+    /// `g(r)` del estado actual (lente, no ley). `r_max` se recorta a la mitad
+    /// del lado más corto del toro.
+    pub fn radial_distribution(&self, r_max: f64, bins: usize) -> crate::analysis::RadialDistribution {
+        let (particles, _) = self.observable_particles();
+        crate::analysis::radial_distribution(&particles, self.config.universe.size, r_max, bins)
+    }
+
+    /// Agregados emergentes del estado actual (friends-of-friends).
+    pub fn cluster_analysis(&self) -> crate::analysis::ClusterStats {
+        let (particles, types) = self.observable_particles();
+        crate::analysis::clusters(
+            &particles,
+            &types,
+            self.config.universe.size,
+            crate::analysis::BOND_FACTOR,
+        )
+    }
+
     /// Resumen de una línea con las métricas más recientes.
     pub fn status_line(&self) -> String {
         let s = &self.stats.snapshot;
@@ -275,6 +326,9 @@ fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
         if cfg.systems.enable_collisions {
             scheduler.add_system(CollisionSystem::new(cfg));
         }
+    }
+    if cfg.systems.enable_forces {
+        scheduler.add_system(StructureSystem::new(cfg.stats.structure_interval));
     }
     scheduler.add_system(StatsSystem);
 }

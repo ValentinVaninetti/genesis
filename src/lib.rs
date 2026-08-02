@@ -25,6 +25,7 @@
 //! nada de evolución: solo reglas. Si algo parecido a la vida aparece, será
 //! una consecuencia, nunca una característica.
 
+pub mod analysis;
 pub mod chemistry;
 pub mod components;
 pub mod config;

@@ -7,6 +7,25 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Estructura emergente medida por el sistema de análisis (agregados de
+/// friends-of-friends). Es observación, no estado físico: describe lo que las
+/// leyes producen, sin alimentar la simulación.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct StructureStats {
+    /// Tick en que se midió.
+    pub tick: u64,
+    /// Clusters de un solo átomo.
+    pub monomers: usize,
+    /// Clusters de ≥ 2 átomos.
+    pub aggregates: usize,
+    /// Tamaño del agregado más grande.
+    pub largest: usize,
+    /// Tamaño medio sobre todos los clusters.
+    pub mean_size: f64,
+    /// Pares de átomos en contacto.
+    pub bound_pairs: usize,
+}
+
 /// Una fotografía de métricas en un instante del tiempo de simulación.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSnapshot {
@@ -27,6 +46,9 @@ pub struct StatsSnapshot {
     pub systems_run: u64,
     pub fps: f64,
     pub memory_bytes: usize,
+    /// Resumen de estructura del último muestreo del análisis (None si no hay
+    /// fuerzas o aún no se muestreó).
+    pub structure: Option<StructureStats>,
 }
 
 /// Colector de métricas con historial.
@@ -58,6 +80,7 @@ impl StatsCollector {
                 systems_run: 0,
                 fps: 0.0,
                 memory_bytes: 0,
+                structure: None,
             },
             systems_run: 0,
             fps: 0.0,

@@ -10,6 +10,7 @@ pub mod collisions;
 pub mod forces;
 pub mod integrate;
 pub mod movement;
+pub mod structure;
 
 pub use aggregate::StatsSystem;
 pub use boundary::BoundarySystem;
@@ -17,3 +18,4 @@ pub use collisions::CollisionSystem;
 pub use forces::ForceSystem;
 pub use integrate::{PositionDrift, VelocityHalfKick};
 pub use movement::MovementSystem;
+pub use structure::StructureSystem;

@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Versión del formato de guardado. Incrementar en rompimientos de formato.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// Estado global del universo (todo excepto el `World`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
