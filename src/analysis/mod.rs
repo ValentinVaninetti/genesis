@@ -11,6 +11,8 @@ use crate::math::Vec3;
 use crate::physics::forces::sigma;
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
 
+pub mod pairs;
+
 /// "Contact" factor for the aggregate analysis: two atoms belong to the same
 /// cluster when `r < BOND_FACTOR · σ_ij`. `1.5·σ` is inside the attractive
 /// well of the LJ potential (whose minimum lives at `1.12·σ`).

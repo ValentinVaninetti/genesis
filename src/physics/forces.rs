@@ -79,6 +79,30 @@ pub fn epsilon(t: AtomType) -> f64 {
     ELEMENTS[element_index(t)].epsilon_k
 }
 
+/// Lorentz–Berthelot mixing of σ for a pair (same rule as `LjTable::new`).
+pub fn mix_sigma(a: AtomType, b: AtomType) -> f64 {
+    0.5 * (sigma(a) + sigma(b))
+}
+
+/// Lorentz–Berthelot mixing of ε for a pair, in energy units.
+pub fn mix_epsilon(thermal_constant: f64, a: AtomType, b: AtomType) -> f64 {
+    thermal_constant * (epsilon(a) * epsilon(b)).sqrt()
+}
+
+/// Second derivative of the LJ potential at its minimum `r_m = σ·2^(1/6)`:
+/// the effective spring constant of the well. One line from the analytic
+/// form: `V''(r_m) = 72·2^(−1/3)·ε/σ²`.
+pub fn well_curvature(epsilon: f64, sigma: f64) -> f64 {
+    72.0 * 2.0f64.powf(-1.0 / 3.0) * epsilon / (sigma * sigma)
+}
+
+/// Oscillation period of a pair at the bottom of the well, in simulation time
+/// units: `T = 2π·√(μ/k)`, with `μ` the reduced mass and `k` the well
+/// curvature. The same units as the dynamics (mass in amu, ε in energy).
+pub fn vib_period(epsilon: f64, sigma: f64, reduced_mass: f64) -> f64 {
+    2.0 * std::f64::consts::PI * (reduced_mass / well_curvature(epsilon, sigma)).sqrt()
+}
+
 /// Parameters of a pair of types (`ε` already in energy units).
 #[derive(Debug, Clone, Copy)]
 pub struct LjPair {
@@ -249,5 +273,51 @@ mod tests {
         let (f_in, _) = t.force_switched(p, r_in, Vec3::new(1.0, 0.0, 0.0));
         let (m, _) = lj_raw(p, r_in);
         assert!((f_in.x - m).abs() < 1e-12);
+    }
+
+    #[test]
+    fn well_curvature_matches_numeric_second_derivative() {
+        let eps = 0.8;
+        let s = 1.9;
+        let r_m = s * 2.0f64.powf(1.0 / 6.0);
+        let h = 1e-5;
+        let v = |r: f64| lj_raw(LjPair { sigma: s, epsilon: eps }, r).1;
+        let numeric = (v(r_m + h) + v(r_m - h) - 2.0 * v(r_m)) / (h * h);
+        assert!(
+            (numeric - well_curvature(eps, s)).abs() / numeric < 1e-4,
+            "analytic curvature {} != numeric {numeric}",
+            well_curvature(eps, s)
+        );
+    }
+
+    #[test]
+    fn vib_period_is_physically_ordered() {
+        // Carbon–Carbon in the default units: a few sim-time units per
+        // vibration (~260 ticks at dt = 1/60), i.e. a handful of ticks per
+        // oscillation — the scale against which "persistent" should be
+        // measured.
+        let mu = AtomType::Carbon.mass() / 2.0;
+        let eps = mix_epsilon(0.01, AtomType::Carbon, AtomType::Carbon);
+        let sig = mix_sigma(AtomType::Carbon, AtomType::Carbon);
+        let t_cc = vib_period(eps, sig, mu);
+        assert!((1.0..20.0).contains(&t_cc), "period {t_cc:.2} out of range");
+
+        // The periods of very different pairs land in the same order of
+        // magnitude (heavy/deep compensates light/shallow), so they are
+        // comparable as a criterion; assert the scale holds across species
+        // and that pairs genuinely differ.
+        let t_hh = vib_period(
+            mix_epsilon(0.01, AtomType::Hydrogen, AtomType::Hydrogen),
+            mix_sigma(AtomType::Hydrogen, AtomType::Hydrogen),
+            AtomType::Hydrogen.mass() / 2.0,
+        );
+        let t_fefe = vib_period(
+            mix_epsilon(0.01, AtomType::Iron, AtomType::Iron),
+            mix_sigma(AtomType::Iron, AtomType::Iron),
+            AtomType::Iron.mass() / 2.0,
+        );
+        assert!((1.0..20.0).contains(&t_hh));
+        assert!((1.0..20.0).contains(&t_fefe));
+        assert!((t_cc - t_hh).abs() > 0.5, "C–C and H–H should differ");
     }
 }
