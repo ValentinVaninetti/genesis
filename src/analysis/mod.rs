@@ -100,6 +100,70 @@ pub fn radial_distribution(
     RadialDistribution { r_max, dr, bins }
 }
 
+/// Partial radial distribution `g_ab(r)` between two species.
+///
+/// Counts the pairs with one atom of type `ta` and one of `tb` (`ta == tb`
+/// counts only both of that type) and normalizes per species, so that a
+/// random homogeneous mixture gives `g → 1` in each shell: the expected pairs
+/// are `N_a·N_b·shell/V` (`a≠b`) or `N_a(N_a−1)/2·shell/V` (`a==b`), and the
+/// grid reports each pair exactly once. A peak reveals that both species
+/// coordinate at that distance, well below the other elements' average.
+pub fn radial_distribution_between(
+    particles: &[Particle],
+    types: &[AtomType],
+    ta: AtomType,
+    tb: AtomType,
+    world_size: Vec3,
+    r_max: f64,
+    nbins: usize,
+) -> RadialDistribution {
+    let nbins = nbins.clamp(1, 1 << 16);
+    let half_min = world_size.x.min(world_size.y).min(world_size.z) * 0.5;
+    let r_max = r_max.max(1e-9).min(half_min);
+    let dr = r_max / nbins as f64;
+    let vol = world_size.x * world_size.y * world_size.z;
+    let na = types.iter().filter(|&&t| t == ta).count();
+    let nb = types.iter().filter(|&&t| t == tb).count();
+
+    let mut grid = SpatialGrid::new(world_size, r_max);
+    grid.build(particles);
+    let mut pairs = Vec::new();
+    grid.neighbors(particles, r_max, &mut pairs);
+
+    let mut counts = vec![0u64; nbins];
+    for &p in &pairs {
+        let (ta_p, tb_p) = (types[p.a], types[p.b]);
+        if !((ta_p == ta && tb_p == tb) || (ta_p == tb && tb_p == ta)) {
+            continue;
+        }
+        let a = &particles[p.a];
+        let b = &particles[p.b];
+        let d = min_image(a.pos - b.pos, world_size).length();
+        if d >= r_max {
+            continue;
+        }
+        counts[(d / dr) as usize] += 1;
+    }
+
+    let pair_count = if ta == tb {
+        (na as f64) * (na.saturating_sub(1) as f64) * 0.5
+    } else {
+        (na as f64) * (nb as f64)
+    };
+    let mut bins = vec![0.0f64; nbins];
+    if pair_count <= 0.0 {
+        return RadialDistribution { r_max, dr, bins };
+    }
+    for (i, &c) in counts.iter().enumerate() {
+        let r_lo = i as f64 * dr;
+        let r_hi = r_lo + dr;
+        let shell = 4.0 / 3.0 * std::f64::consts::PI * (r_hi * r_hi * r_hi - r_lo * r_lo * r_lo);
+        let expected = pair_count * shell / vol;
+        bins[i] = c as f64 / expected.max(f64::MIN_POSITIVE);
+    }
+    RadialDistribution { r_max, dr, bins }
+}
+
 /// Summary of aggregates detected with friends-of-friends.
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
 pub struct ClusterStats {
@@ -256,6 +320,62 @@ mod tests {
             (0.8..=1.2).contains(&mean),
             "ideal gas → g≈1, got {mean}"
         );
+    }
+
+    #[test]
+    fn partial_g_r_isolates_the_requested_species() {
+        // One C–C pair at r=1.8 inside a dense sea of random H: g_CC must
+        // spike, g_HH must stay ~1 (ideal gas) and g_CH must show no
+        // coordination. Proves the species filter of `_between`.
+        let world = Vec3::new(32.0, 32.0, 32.0);
+        let mut particles: Vec<Particle> = Vec::new();
+        let mut types = Vec::new();
+        let mut rng = Rng::new(11);
+        for i in 0..2000 {
+            particles.push(Particle {
+                index: i,
+                pos: rng.in_box(world.scale(0.5)),
+                vel: Vec3::ZERO,
+                mass: 1.0,
+            });
+            types.push(AtomType::Hydrogen);
+        }
+        particles[0].pos = Vec3::new(0.0, 0.0, 0.0);
+        particles[1].pos = Vec3::new(1.8, 0.0, 0.0);
+        types[0] = AtomType::Carbon;
+        types[1] = AtomType::Carbon;
+
+        let g_cc = radial_distribution_between(&particles, &types, AtomType::Carbon, AtomType::Carbon, world, 4.0, 400);
+        let (_, gp_cc) = g_cc.peak_in(0.5, 3.0).expect("C-C peak");
+        assert!(gp_cc > 500.0, "a single C-C pair must spike g_CC: {gp_cc}");
+
+        let g_hh = radial_distribution_between(&particles, &types, AtomType::Hydrogen, AtomType::Hydrogen, world, 4.0, 400);
+        let mean = g_hh.bins.iter().sum::<f64>() / g_hh.bins.len() as f64;
+        assert!(
+            (0.9..=1.15).contains(&mean),
+            "H-H must behave as an ideal gas (g≈1), got {mean}"
+        );
+
+        let g_ch = radial_distribution_between(&particles, &types, AtomType::Carbon, AtomType::Hydrogen, world, 4.0, 400);
+        let peak_ch = g_ch.peak_in(0.5, 3.0).map(|(_, g)| g).unwrap_or(0.0);
+        assert!(
+            gp_cc / peak_ch > 100.0,
+            "g_CC must dominate over the Poisson noise of g_CH ({} vs {})",
+            gp_cc,
+            peak_ch
+        );
+    }
+
+    #[test]
+    fn partial_g_r_empty_species_is_flat() {
+        let world = Vec3::new(16.0, 16.0, 16.0);
+        let particles = vec![
+            Particle { index: 0, pos: Vec3::new(0.0, 0.0, 0.0), vel: Vec3::ZERO, mass: 1.0 },
+            Particle { index: 1, pos: Vec3::new(2.0, 0.0, 0.0), vel: Vec3::ZERO, mass: 1.0 },
+        ];
+        let types = vec![AtomType::Hydrogen, AtomType::Hydrogen];
+        let g = radial_distribution_between(&particles, &types, AtomType::Sodium, AtomType::Sodium, world, 4.0, 100);
+        assert!(g.bins.iter().all(|&x| x == 0.0), "absent species → empty g(r)");
     }
 
     #[test]

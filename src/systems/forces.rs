@@ -7,6 +7,14 @@
 //! integrator). It also accumulates the total potential energy in the
 //! `PotentialEnergy` resource so statistics can report `E = K + V`.
 //!
+//! The force pass is **parallel per particle** (rayon): each particle queries
+//! its own neighborhood and accumulates only its own acceleration into a
+//! private buffer, so there are no races and the pass scales with the cores.
+//! Every pair is visited twice, once from each end — the forces are exactly
+//! opposite (Newton's 3rd law, momentum conserved) and the potential is
+//! halved. The result is collected by slot index, keeping the run
+//! deterministic.
+//!
 //! It knows nothing about species, bonds or reactions: only mass, position
 //! and atomic type (which provides σ and ε). All the "chemistry" emerges from
 //! here.
@@ -18,6 +26,7 @@ use crate::physics::forces::{LjTable, LJ_CUTOFF_FACTOR};
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
 use crate::scheduler::{Access, System, SystemContext};
 use crate::stats::PotentialEnergy;
+use rayon::prelude::*;
 
 fn element_index(t: AtomType) -> usize {
     match t {
@@ -88,38 +97,55 @@ impl System for ForceSystem {
             return;
         }
 
-        // Phase 2: broadphase — pairs within the cutoff.
+        // Phase 2: broadphase — one grid rebuild per tick.
         self.grid.build(&particles);
-        let mut pairs = Vec::new();
-        self.grid.neighbors(&particles, self.rc, &mut pairs);
 
-        // Phase 3: accumulate forces (a = F/m) and potential energy per pair.
-        // The pair normal points from `b` towards `a`; the force on `a` goes
-        // along it, and the one on `b` is exactly the opposite (Newton's 3rd
-        // law), so total momentum is conserved.
+        // Phase 3: parallel per-particle forces (a = F/m) and potential.
+        //
+        // Each particle queries its own neighborhood and accumulates only its
+        // own force into a private buffer, so the pass is race-free and fully
+        // parallel. Each pair is visited twice (once per end): the forces are
+        // exactly opposite (Newton's 3rd law, momentum conserved) and the
+        // potential must be halved at the end. The per-slot results are
+        // collected in order, so the run stays deterministic.
+        let per_slot: Vec<(Vec3, f64)> = (0..particles.len())
+            .into_par_iter()
+            .map_init(Vec::new, |buf, i| {
+                let a = &particles[i];
+                let mut force = Vec3::ZERO;
+                let mut local_v = 0.0;
+                self.grid.neighbors_of(&particles, i, self.rc, buf);
+                for &j in buf.iter() {
+                    let b = &particles[j as usize];
+                    let delta = min_image(a.pos - b.pos, world_size);
+                    let d2 = delta.length_squared();
+                    if d2 >= rc2 {
+                        continue;
+                    }
+                    let d = d2.sqrt();
+                    if d <= f64::EPSILON {
+                        continue;
+                    }
+                    let normal = delta * (1.0 / d);
+                    let p = self.lj.pair_indexed(types[i] as usize, types[j as usize] as usize);
+                    let (f, v) = self.lj.force_switched(p, d, normal);
+                    force += f / a.mass;
+                    local_v += v;
+                }
+                (force, local_v)
+            })
+            .collect();
+
+        // Phase 4: apply accelerations by entity index and sum the potential
+        // (each pair counted twice → half).
         let mut acc = vec![Vec3::ZERO; capacity];
         let mut potential = 0.0;
-        for &pair in &pairs {
-            let a = &particles[pair.a];
-            let b = &particles[pair.b];
-            let delta = min_image(a.pos - b.pos, world_size);
-            let d2 = delta.length_squared();
-            if d2 >= rc2 {
-                continue;
-            }
-            let d = d2.sqrt();
-            if d <= f64::EPSILON {
-                continue;
-            }
-            let normal = delta * (1.0 / d);
-            let p = self.lj.pair_indexed(types[pair.a] as usize, types[pair.b] as usize);
-            let (f, v) = self.lj.force_switched(p, d, normal);
-            acc[pair.a] += f / a.mass;
-            acc[pair.b] -= f / b.mass;
+        for (slot, (f, v)) in per_slot.iter().enumerate() {
+            acc[particles[slot].index as usize] = *f;
             potential += v;
         }
+        potential *= 0.5;
 
-        // Phase 4: apply the accelerations in parallel.
         ctx.world.par_for_each1_mut::<Acceleration>(|e, a| {
             a.0 = acc[e.index() as usize];
         });

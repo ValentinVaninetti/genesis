@@ -32,8 +32,18 @@ pub struct UniverseConfig {
     pub dt: f64,
     /// Atoms seeded at startup.
     pub initial_atoms: usize,
+    /// Elements seeded at startup; empty means all of them. A starting point,
+    /// not a law: the universe does not know about species, only the seeding
+    /// uses this table.
+    #[serde(default = "default_elements")]
+    pub elements: Vec<crate::components::AtomType>,
     /// Maximum capacity of the metrics history.
     pub stats_history: usize,
+}
+
+/// Elements seeded by default (all of them).
+fn default_elements() -> Vec<crate::components::AtomType> {
+    crate::components::AtomType::ALL.to_vec()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +153,7 @@ impl Config {
                 size: Vec3::new(128.0, 128.0, 128.0),
                 dt: 1.0 / 60.0,
                 initial_atoms: 10_000,
+                elements: default_elements(),
                 stats_history: 1024,
             },
             rng: RngConfig { seed: 42 },
@@ -241,6 +252,8 @@ size = { x = 128.0, y = 128.0, z = 128.0 }
 dt = 0.016666666666666666
 # Atoms seeded at startup.
 initial_atoms = 100000
+# Elements seeded at startup (symbols or full names); empty = all.
+elements = ["Hydrogen", "Helium", "Carbon", "Nitrogen", "Oxygen"]
 # Capacity of the metrics history.
 stats_history = 1024
 

@@ -152,6 +152,38 @@ impl SpatialGrid {
         }
     }
 
+    /// Pushes the slots of the particles within `cutoff` of the particle at
+    /// `slot` (torus, minimum image). Includes same-cell particles; never the
+    /// particle itself. Cells are ≥ `cutoff`, so the 27-cell neighborhood is a
+    /// superset of the candidates and the distance filter below is exact.
+    ///
+    /// Used by the parallel per-particle force pass: each particle queries its
+    /// own neighborhood (each pair is visited twice, once per end), which
+    /// keeps the accumulation race-free.
+    pub fn neighbors_of(&self, particles: &[Particle], slot: usize, cutoff: f64, out: &mut Vec<u32>) {
+        let cd2 = cutoff * cutoff;
+        out.clear();
+        let p = &particles[slot];
+        let (cx, cy, cz) = self.cell_of(p.pos);
+        for &(dx, dy, dz) in &ALL_OFFSETS {
+            let nc = self.neighbor(cx, cy, cz, dx, dy, dz);
+            if self.heads[nc] == EMPTY {
+                continue;
+            }
+            let mut cur = self.heads[nc];
+            while cur != EMPTY {
+                if cur as usize != slot
+                    && min_image(p.pos - particles[cur as usize].pos, self.world_size)
+                        .length_squared()
+                        < cd2
+                {
+                    out.push(cur);
+                }
+                cur = self.next[cur as usize];
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------------

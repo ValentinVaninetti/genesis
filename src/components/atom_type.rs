@@ -22,6 +22,29 @@ pub enum AtomType {
 }
 
 impl AtomType {
+    /// All available elements (configurable starting point, not a law).
+    pub const ALL: [Self; 6] = [
+        Self::Hydrogen,
+        Self::Helium,
+        Self::Carbon,
+        Self::Nitrogen,
+        Self::Oxygen,
+        Self::Sodium,
+    ];
+
+    /// Parses an element by symbol or full name (case-insensitive).
+    pub fn by_name(name: &str) -> Option<Self> {
+        match name.trim() {
+            "H" | "Hydrogen" | "hydrogen" => Some(Self::Hydrogen),
+            "He" | "Helium" | "helium" => Some(Self::Helium),
+            "C" | "Carbon" | "carbon" => Some(Self::Carbon),
+            "N" | "Nitrogen" | "nitrogen" => Some(Self::Nitrogen),
+            "O" | "Oxygen" | "oxygen" => Some(Self::Oxygen),
+            "Na" | "Sodium" | "sodium" => Some(Self::Sodium),
+            _ => None,
+        }
+    }
+
     /// Symbolic name.
     pub fn symbol(self) -> &'static str {
         match self {

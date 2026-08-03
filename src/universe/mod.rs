@@ -169,13 +169,10 @@ impl Universe {
         let count = self.config.universe.initial_atoms;
         let temp = self.config.physics.initial_temperature;
         let k = self.config.physics.thermal_constant;
-        let elements = [
-            AtomType::Hydrogen,
-            AtomType::Helium,
-            AtomType::Carbon,
-            AtomType::Nitrogen,
-            AtomType::Oxygen,
-        ];
+        let mut elements = self.config.universe.elements.clone();
+        if elements.is_empty() {
+            elements = AtomType::ALL.to_vec();
+        }
         if self.config.systems.enable_forces {
             self.seed_lattice(count, temp, k, &elements);
         } else {
@@ -267,6 +264,26 @@ impl Universe {
     pub fn radial_distribution(&self, r_max: f64, bins: usize) -> crate::analysis::RadialDistribution {
         let (particles, _) = self.observable_particles();
         crate::analysis::radial_distribution(&particles, self.config.universe.size, r_max, bins)
+    }
+
+    /// Partial `g_ab(r)` between two species (a lens, not a law).
+    pub fn radial_distribution_between(
+        &self,
+        ta: AtomType,
+        tb: AtomType,
+        r_max: f64,
+        bins: usize,
+    ) -> crate::analysis::RadialDistribution {
+        let (particles, types) = self.observable_particles();
+        crate::analysis::radial_distribution_between(
+            &particles,
+            &types,
+            ta,
+            tb,
+            self.config.universe.size,
+            r_max,
+            bins,
+        )
     }
 
     /// Emergent aggregates of the current state (friends-of-friends).

@@ -66,6 +66,11 @@ pub fn sigma(t: AtomType) -> f64 {
     ELEMENTS[element_index(t)].sigma
 }
 
+/// Depth `ε` of an element (kelvin).
+pub fn epsilon(t: AtomType) -> f64 {
+    ELEMENTS[element_index(t)].epsilon_k
+}
+
 /// Parameters of a pair of types (`ε` already in energy units).
 #[derive(Debug, Clone, Copy)]
 pub struct LjPair {
