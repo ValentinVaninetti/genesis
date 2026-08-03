@@ -36,6 +36,10 @@ fn element_index(t: AtomType) -> usize {
         AtomType::Nitrogen => 3,
         AtomType::Oxygen => 4,
         AtomType::Sodium => 5,
+        AtomType::Silicon => 6,
+        AtomType::Phosphorus => 7,
+        AtomType::Sulfur => 8,
+        AtomType::Iron => 9,
     }
 }
 

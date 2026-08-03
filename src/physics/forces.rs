@@ -34,13 +34,17 @@ pub struct LjElement {
 /// Element table: `σ` in simulation units, `ε` in kelvin.
 /// Values of the order of the real ones for simple gases (relative to each
 /// other).
-const ELEMENTS: [LjElement; 6] = [
+const ELEMENTS: [LjElement; AtomType::COUNT] = [
     LjElement { sigma: 1.6, epsilon_k: 12.0 }, // H
     LjElement { sigma: 1.4, epsilon_k: 8.0 },  // He
     LjElement { sigma: 1.9, epsilon_k: 80.0 }, // C
     LjElement { sigma: 1.7, epsilon_k: 40.0 }, // N
     LjElement { sigma: 1.65, epsilon_k: 55.0 }, // O
     LjElement { sigma: 2.0, epsilon_k: 110.0 }, // Na
+    LjElement { sigma: 2.3, epsilon_k: 200.0 }, // Si
+    LjElement { sigma: 2.2, epsilon_k: 150.0 }, // P
+    LjElement { sigma: 2.1, epsilon_k: 130.0 }, // S
+    LjElement { sigma: 1.9, epsilon_k: 350.0 }, // Fe
 ];
 
 /// Cutoff distance in multiples of `σ`: beyond it there is no interaction.
@@ -58,6 +62,10 @@ fn element_index(t: AtomType) -> usize {
         AtomType::Nitrogen => 3,
         AtomType::Oxygen => 4,
         AtomType::Sodium => 5,
+        AtomType::Silicon => 6,
+        AtomType::Phosphorus => 7,
+        AtomType::Sulfur => 8,
+        AtomType::Iron => 9,
     }
 }
 
@@ -78,9 +86,9 @@ pub struct LjPair {
     pub epsilon: f64,
 }
 
-/// Pair table (6×6, symmetric) with the system cutoff.
+/// Pair table (COUNT×COUNT, symmetric) with the system cutoff.
 pub struct LjTable {
-    pair: [[LjPair; 6]; 6],
+    pair: [[LjPair; AtomType::COUNT]; AtomType::COUNT],
     rc: f64,
     r_on: f64,
 }
@@ -89,10 +97,11 @@ impl LjTable {
     /// Builds the table with the mixing rules and prepares the smooth switch
     /// between `r_on` and `rc`.
     pub fn new(thermal_constant: f64, cutoff_factor: f64) -> Self {
+        let n = AtomType::COUNT;
         let mut max_sigma = 0.0f64;
-        let mut pair = [[LjPair { sigma: 1.0, epsilon: 0.0 }; 6]; 6];
-        for i in 0..6 {
-            for j in 0..6 {
+        let mut pair = [[LjPair { sigma: 1.0, epsilon: 0.0 }; AtomType::COUNT]; AtomType::COUNT];
+        for i in 0..n {
+            for j in 0..n {
                 let a = ELEMENTS[i];
                 let b = ELEMENTS[j];
                 let sigma = 0.5 * (a.sigma + b.sigma);

@@ -49,6 +49,16 @@ architecture decisions of stage 0 (the foundation).
      fixed T and measures structure. Observed: the mixture condenses gradually
      over ~20–120 K (deep wells C/O/N bind first, shallow H/He evaporate
      first) — an emergent consequence of the heterogeneous ε wells.
+- ✅ **Parallel forces** (rayon): the LJ force pass accumulates per-particle
+     forces in parallel (~3× on 8 cores) with deterministic collection order.
+- ✅ **10 elements** (H, He, C, N, O, Na, Si, P, S, Fe) with LJ parameters in
+     `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
+- ✅ **Observability exports** (`src/export/`): metrics CSV (`[stats].csv_path`,
+     appended every `csv_interval` ticks) and position frames in XYZ
+     (`[stats].xyz_prefix`, one `frame_{tick:08}.xyz` per `xyz_interval` ticks)
+     to plot outside the engine. `tools/plot_stats.py data/stats.csv` plots the
+     trajectory; `examples/observe_quench.rs` is a reproducible NVT quench that
+     writes both.
 - ⏳ Visualization: **outside the engine** (console only today).
 
 ```
@@ -149,6 +159,7 @@ src/
 ├── config/              # typed Config (TOML)
 ├── serialization/       # total snapshot (bincode)
 ├── stats/               # metrics + history
+├── export/              # CSV + XYZ exports (observability, I/O only)
 ├── analysis/            # lenses: g(r) and aggregates (observation, not laws)
 ├── math/                # Vec3
 ├── rng/                 # serializable RNG (xoshiro256++)

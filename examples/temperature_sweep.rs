@@ -46,7 +46,7 @@ fn main() {
         );
         Some(e)
     } else {
-        println!("mixed 5-element sweep (per-species g(r): C-C and H-H)");
+        println!("mixed {}-element sweep (per-species g(r): C-C and H-H)", AtomType::COUNT);
         None
     };
 

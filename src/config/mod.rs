@@ -132,6 +132,16 @@ pub struct StatsConfig {
     pub histogram_max_speed: f64,
     /// Every how many ticks the structure (aggregates) is sampled.
     pub structure_interval: u64,
+    /// Path of the metrics CSV. Empty disables the export; a row is appended
+    /// every `csv_interval` ticks (the file is created with the header).
+    pub csv_path: String,
+    /// Every how many ticks a metrics row is appended to `csv_path`.
+    pub csv_interval: u64,
+    /// Prefix of the position frames (XYZ). Empty disables the dump; each
+    /// sampled tick writes `{prefix}_{tick:08}.xyz`.
+    pub xyz_prefix: String,
+    /// Every how many ticks a position frame is dumped.
+    pub xyz_interval: u64,
 }
 
 impl Default for StatsConfig {
@@ -140,6 +150,10 @@ impl Default for StatsConfig {
             histogram_bins: 32,
             histogram_max_speed: 10.0,
             structure_interval: 100,
+            csv_path: String::new(),
+            csv_interval: 10,
+            xyz_prefix: String::new(),
+            xyz_interval: 100,
         }
     }
 }
@@ -292,4 +306,10 @@ histogram_bins = 32
 histogram_max_speed = 10.0
 # Every how many ticks the aggregates are measured (emergent structure).
 structure_interval = 100
+# Observability exports (disabled when empty): metrics CSV and position
+# frames (XYZ) to plot outside the engine (matplotlib, gnuplot, OVITO).
+csv_path = "data/stats.csv"
+csv_interval = 10
+xyz_prefix = "data/frames/frame"
+xyz_interval = 200
 "#;

@@ -64,6 +64,23 @@ fn main() {
                 structure,
             );
         }
+        if tick % universe.config.stats.csv_interval == 0
+            && !universe.config.stats.csv_path.is_empty()
+            && let Err(e) =
+                genesis::export::append_csv(&universe.config.stats.csv_path, &universe.stats.snapshot)
+        {
+            eprintln!("! error writing CSV: {e}");
+        }
+        if tick % universe.config.stats.xyz_interval == 0
+            && !universe.config.stats.xyz_prefix.is_empty()
+            && let Err(e) = genesis::export::write_frame(
+                &universe.config.stats.xyz_prefix,
+                tick,
+                &universe.world,
+            )
+        {
+            eprintln!("! error writing XYZ frame: {e}");
+        }
     }
     let wall_secs = wall.elapsed().as_secs_f64();
 

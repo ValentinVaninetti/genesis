@@ -29,6 +29,7 @@ pub mod chemistry;
 pub mod components;
 pub mod config;
 pub mod ecs;
+pub mod export;
 pub mod math;
 pub mod physics;
 pub mod rng;

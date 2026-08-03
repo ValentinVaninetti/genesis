@@ -51,3 +51,9 @@ histogram_bins = 32
 histogram_max_speed = 10.0
 # Every how many ticks the aggregates are measured (emergent structure).
 structure_interval = 100
+# Observability exports (disabled when empty): metrics CSV and position
+# frames (XYZ) to plot outside the engine (matplotlib, gnuplot, OVITO).
+csv_path = "data/stats.csv"
+csv_interval = 10
+xyz_prefix = "data/frames/frame"
+xyz_interval = 200
