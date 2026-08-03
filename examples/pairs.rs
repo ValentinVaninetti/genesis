@@ -177,7 +177,48 @@ fn print_summary(stats: &[EpisodeStats], still_open: usize) {
             b = m.b.symbol(),
         );
     }
+    print_by_species(stats);
     println!("> episodes written to data/pairs.csv");
+}
+
+/// Per-species-pair breakdown: which element pairs actually bind. The
+/// "emergent chemistry" of the run — Fe–Fe is expected to be the deepest
+/// (well depth in kelvin: Fe 350 ≫ H 12).
+fn print_by_species(stats: &[EpisodeStats]) {
+    use std::collections::BTreeMap;
+    #[derive(Default)]
+    struct Acc {
+        episodes: usize,
+        persistent: usize,
+        sum_ticks: u64,
+        sum_periods: f64,
+        max_periods: f64,
+    }
+    let mut by: BTreeMap<(&str, &str), Acc> = BTreeMap::new();
+    for s in stats {
+        let (sa, sb) = match s.a.symbol().cmp(s.b.symbol()) {
+            std::cmp::Ordering::Less => (s.a.symbol(), s.b.symbol()),
+            _ => (s.b.symbol(), s.a.symbol()),
+        };
+        let acc = by.entry((sa, sb)).or_default();
+        acc.episodes += 1;
+        if s.vib_periods >= PERSISTENT_PERIODS {
+            acc.persistent += 1;
+        }
+        acc.sum_ticks += s.ticks;
+        acc.sum_periods += s.vib_periods;
+        acc.max_periods = acc.max_periods.max(s.vib_periods);
+    }
+    println!("    by species (episodes | mean T_vib | max T_vib | persistent%):");
+    for ((a, b), acc) in &by {
+        println!(
+            "      {a:>2}–{b:<2}  {:>7}  {:>8.2}  {:>9.2}  {:>7.1}%",
+            acc.episodes,
+            acc.sum_periods / acc.episodes as f64,
+            acc.max_periods,
+            acc.persistent as f64 / acc.episodes as f64 * 100.0,
+        );
+    }
 }
 
 fn write_csv(path: &str, stats: &[EpisodeStats]) -> std::io::Result<()> {
