@@ -8,7 +8,7 @@
 use crate::components::{Mass, Velocity};
 use crate::config::Config;
 use crate::scheduler::{Access, System, SystemContext};
-use crate::stats::{CollisionCounter, PotentialEnergy, StatsSnapshot, StructureStats};
+use crate::stats::{BondObservation, CollisionCounter, PotentialEnergy, StatsSnapshot, StructureStats};
 
 pub struct StatsSystem;
 
@@ -25,6 +25,7 @@ impl System for StatsSystem {
             .resource_read::<CollisionCounter>()
             .resource_read::<PotentialEnergy>()
             .resource_read::<StructureStats>()
+            .resource_read::<BondObservation>()
     }
 
     fn run(&mut self, ctx: &mut SystemContext<'_>) {
@@ -44,6 +45,11 @@ impl System for StatsSystem {
             .get::<StructureStats>()
             .copied()
             .filter(|s| s.tick > 0);
+        let bonded_pairs = ctx
+            .resources
+            .get::<BondObservation>()
+            .map(|b| b.bonded_pairs)
+            .unwrap_or(0);
 
         let mut kinetic = 0.0;
         let mut speed_sum = 0.0;
@@ -94,6 +100,7 @@ impl System for StatsSystem {
             fps: ctx.stats.fps,
             memory_bytes: ctx.world.memory_bytes(),
             structure,
+            bonded_pairs,
         };
         ctx.stats.record(snapshot);
     }

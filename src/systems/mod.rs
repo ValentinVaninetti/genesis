@@ -5,6 +5,7 @@
 //! coexist here with observation (statistics).
 
 pub mod aggregate;
+pub mod bonds;
 pub mod boundary;
 pub mod collisions;
 pub mod forces;
@@ -14,6 +15,7 @@ pub mod structure;
 pub mod thermostat;
 
 pub use aggregate::StatsSystem;
+pub use bonds::BondObservationSystem;
 pub use boundary::BoundarySystem;
 pub use collisions::CollisionSystem;
 pub use forces::ForceSystem;

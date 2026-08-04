@@ -29,22 +29,27 @@ pub struct LjElement {
     pub sigma: f64,
     /// Depth of the well in kelvin.
     pub epsilon_k: f64,
+    /// Net charge in units of elementary charge (electrostatics law). Zero by
+    /// default: charge is a law constant of the species, not a programmed bond.
+    pub charge: f64,
 }
 
-/// Element table: `σ` in simulation units, `ε` in kelvin.
+/// Element table: `σ` in simulation units, `ε` in kelvin, `charge` in
+/// elementary charges.
 /// Values of the order of the real ones for simple gases (relative to each
-/// other).
+/// other). Charges follow ionization trends: metals donate, oxygen accepts,
+/// the noble/neutral gases carry none.
 const ELEMENTS: [LjElement; AtomType::COUNT] = [
-    LjElement { sigma: 1.6, epsilon_k: 12.0 }, // H
-    LjElement { sigma: 1.4, epsilon_k: 8.0 },  // He
-    LjElement { sigma: 1.9, epsilon_k: 80.0 }, // C
-    LjElement { sigma: 1.7, epsilon_k: 40.0 }, // N
-    LjElement { sigma: 1.65, epsilon_k: 55.0 }, // O
-    LjElement { sigma: 2.0, epsilon_k: 110.0 }, // Na
-    LjElement { sigma: 2.3, epsilon_k: 200.0 }, // Si
-    LjElement { sigma: 2.2, epsilon_k: 150.0 }, // P
-    LjElement { sigma: 2.1, epsilon_k: 130.0 }, // S
-    LjElement { sigma: 1.9, epsilon_k: 350.0 }, // Fe
+    LjElement { sigma: 1.6, epsilon_k: 12.0, charge: 0.0 },   // H
+    LjElement { sigma: 1.4, epsilon_k: 8.0, charge: 0.0 },    // He
+    LjElement { sigma: 1.9, epsilon_k: 80.0, charge: 0.0 },   // C
+    LjElement { sigma: 1.7, epsilon_k: 40.0, charge: 0.0 },   // N
+    LjElement { sigma: 1.65, epsilon_k: 55.0, charge: -1.0 }, // O
+    LjElement { sigma: 2.0, epsilon_k: 110.0, charge: 1.0 },  // Na
+    LjElement { sigma: 2.3, epsilon_k: 200.0, charge: 0.5 },  // Si
+    LjElement { sigma: 2.2, epsilon_k: 150.0, charge: 0.0 },  // P
+    LjElement { sigma: 2.1, epsilon_k: 130.0, charge: 0.0 },  // S
+    LjElement { sigma: 1.9, epsilon_k: 350.0, charge: 1.0 },  // Fe
 ];
 
 /// Cutoff distance in multiples of `σ`: beyond it there is no interaction.
@@ -77,6 +82,11 @@ pub fn sigma(t: AtomType) -> f64 {
 /// Depth `ε` of an element (kelvin).
 pub fn epsilon(t: AtomType) -> f64 {
     ELEMENTS[element_index(t)].epsilon_k
+}
+
+/// Net charge of an element (elementary charges).
+pub fn charge(t: AtomType) -> f64 {
+    ELEMENTS[element_index(t)].charge
 }
 
 /// Lorentz–Berthelot mixing of σ for a pair (same rule as `LjTable::new`).
@@ -163,40 +173,56 @@ impl LjTable {
     #[inline]
     pub fn force_switched(&self, p: LjPair, r: f64, normal: Vec3) -> (Vec3, f64) {
         let r = r.max(LJ_NUCLEUS * p.sigma);
-        let s = p.sigma / r;
-        let s6 = s * s * s * s * s * s;
-        let s12 = s6 * s6;
-
-        // LJ potential (not shifted) and base force magnitude along `normal`
-        // (= −dV/dr).
-        let v = 4.0 * p.epsilon * (s12 - s6);
-        let m = (24.0 * p.epsilon / p.sigma) * s * (2.0 * s12 - s6);
-
-        let (sw, dsw) = self.switch(r);
-        // F_ef = −d(V·sw)/dr = m·sw − V·(dsw/dr)
-        let f_mag = m * sw - v * dsw;
-        (normal * f_mag, v * sw)
+        let (m, v) = lj_raw(p, r);
+        let (sw, dsw) = smooth_cutoff(r, self.r_on, self.rc);
+        let (f_mag, v_sw) = switched(m, v, sw, dsw);
+        (normal * f_mag, v_sw)
     }
+}
 
-    /// Smoothing factor `[0,1]` and its derivative with respect to `r`.
-    ///
-    /// Quintic polynomial (standard smooth function of molecular dynamics):
-    /// it is 1 up to `r_on` and falls to 0 at `rc` with zero first and second
-    /// derivatives at both ends.
-    #[inline]
-    fn switch(&self, r: f64) -> (f64, f64) {
-        if r <= self.r_on {
-            return (1.0, 0.0);
-        }
-        let u = (r - self.r_on) / (self.rc - self.r_on);
-        let u2 = u * u;
-        let u3 = u2 * u;
-        let u4 = u3 * u;
-        let u5 = u4 * u;
-        let sw = 1.0 - 10.0 * u3 + 15.0 * u4 - 6.0 * u5;
-        let dsdu = -30.0 * u2 * (1.0 - u) * (1.0 - u);
-        (sw, dsdu / (self.rc - self.r_on))
+/// Smoothing factor `[0,1]` and its derivative with respect to `r`.
+///
+/// Quintic polynomial (standard smooth function of molecular dynamics): it is
+/// 1 up to `r_on` and falls to 0 at `rc` with zero first and second
+/// derivatives at both ends. Any pair term truncated at `rc` uses it, so the
+/// total force stays continuous and the energy conserved.
+#[inline]
+pub fn smooth_cutoff(r: f64, r_on: f64, rc: f64) -> (f64, f64) {
+    if r <= r_on {
+        return (1.0, 0.0);
     }
+    let u = (r - r_on) / (rc - r_on);
+    let u2 = u * u;
+    let u3 = u2 * u;
+    let u4 = u3 * u;
+    let u5 = u4 * u;
+    let sw = 1.0 - 10.0 * u3 + 15.0 * u4 - 6.0 * u5;
+    let dsdu = -30.0 * u2 * (1.0 - u) * (1.0 - u);
+    (sw, dsdu / (rc - r_on))
+}
+
+/// Applies the smooth truncation to a raw pair term: `F = f_raw·sw − V·(dsw)`
+/// (chain rule of `−d(V·sw)/dr`) and `V = v_raw·sw`.
+#[inline]
+pub fn switched(f_raw: f64, v_raw: f64, sw: f64, dsw: f64) -> (f64, f64) {
+    (f_raw * sw - v_raw * dsw, v_raw * sw)
+}
+
+/// Raw Coulomb term for two charges (magnitude of the force along `normal`,
+/// and the potential): `F = k_e·q_a·q_b/r²`, `V = k_e·q_a·q_b/r`. Opposite
+/// charges attract (negative force along `normal`), like charges repel.
+#[inline]
+pub fn coulomb_raw(k_e: f64, qa: f64, qb: f64, r: f64) -> (f64, f64) {
+    let q = k_e * qa * qb;
+    (q / (r * r), q / r)
+}
+
+/// Raw gravitational term for two masses: `F = −G·m_a·m_b/r²`,
+/// `V = −G·m_a·m_b/r`. Always attractive.
+#[inline]
+pub fn gravity_raw(g: f64, ma: f64, mb: f64, r: f64) -> (f64, f64) {
+    let m = g * ma * mb;
+    (-m / (r * r), -m / r)
 }
 
 /// LJ force and potential **without** switch, for tests of the potential
@@ -319,5 +345,50 @@ mod tests {
         assert!((1.0..20.0).contains(&t_hh));
         assert!((1.0..20.0).contains(&t_fefe));
         assert!((t_cc - t_hh).abs() > 0.5, "C–C and H–H should differ");
+    }
+
+    #[test]
+    fn smooth_cutoff_is_continuous_and_vanishes_at_cutoff() {
+        let (r_on, rc) = (2.0, 3.0);
+        let (sw0, dsw0) = smooth_cutoff(r_on, r_on, rc);
+        assert_eq!(sw0, 1.0);
+        assert_eq!(dsw0, 0.0);
+        let (sw1, dsw1) = smooth_cutoff(rc, r_on, rc);
+        assert!(sw1.abs() < 1e-12);
+        assert!(dsw1.abs() < 1e-12);
+        // Monotone in between.
+        let (mid, _) = smooth_cutoff(2.5, r_on, rc);
+        assert!(mid > 0.0 && mid < 1.0);
+    }
+
+    #[test]
+    fn coulomb_signs_and_potential() {
+        // Opposite charges attract: force along `normal` is negative.
+        let (f, v) = coulomb_raw(1.0, 1.0, -1.0, 2.0);
+        assert!(f < 0.0 && v < 0.0);
+        assert!((f - (-0.25)).abs() < 1e-12);
+        assert!((v - (-0.5)).abs() < 1e-12);
+        // Like charges repel.
+        let (f2, _) = coulomb_raw(1.0, 1.0, 1.0, 2.0);
+        assert!(f2 > 0.0);
+        // 1/r² scaling.
+        let (f3, _) = coulomb_raw(1.0, 1.0, 1.0, 4.0);
+        assert!((f3 - 0.0625).abs() < 1e-12);
+    }
+
+    #[test]
+    fn gravity_is_always_attractive() {
+        let (f, v) = gravity_raw(1.0, 2.0, 3.0, 2.0);
+        assert!(f < 0.0 && v < 0.0);
+        assert!((f - (-1.5)).abs() < 1e-12);
+        assert!((v - (-3.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn element_charges_follow_ionization_trends() {
+        assert_eq!(charge(AtomType::Sodium), 1.0);
+        assert_eq!(charge(AtomType::Oxygen), -1.0);
+        assert_eq!(charge(AtomType::Hydrogen), 0.0);
+        assert_eq!(charge(AtomType::Helium), 0.0);
     }
 }

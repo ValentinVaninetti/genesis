@@ -101,13 +101,36 @@ impl PairTracker {
     pub fn open_count(&self) -> usize {
         self.open.len()
     }
+
+    /// Open episodes and their consecutive bound ticks so far.
+    pub fn open_pairs(&self) -> impl Iterator<Item = (BoundPair, u64)> + '_ {
+        self.open.iter().map(|(&p, &t)| (p, t))
+    }
+}
+
+/// The binding cutoff of `k_bind` σ_ij, in simulation units.
+pub fn bind_cutoff(k_bind: f64) -> f64 {
+    k_bind * AtomType::ALL.iter().map(|&t| sigma(t)).fold(0.0, f64::max)
 }
 
 /// Candidate bound pairs of the current state: `r < k_bind · σ_ij`, with the
 /// mixed `σ_ij` per pair and the spatial grid as broad-phase.
 pub fn collect_bound_pairs(world: &World, world_size: Vec3, k_bind: f64) -> Vec<BoundPair> {
-    let max_sigma = AtomType::ALL.iter().map(|&t| sigma(t)).fold(0.0, f64::max);
-    let cutoff = k_bind * max_sigma;
+    let cutoff = bind_cutoff(k_bind);
+    let mut grid = SpatialGrid::new(world_size, cutoff);
+    bound_pairs_with_grid(world, world_size, k_bind, &mut grid)
+}
+
+/// Same as [`collect_bound_pairs`] but reusing the caller's grid and buffers
+/// (for systems that run every tick). The grid must have been built with a
+/// cell size ≥ the binding cutoff.
+pub fn bound_pairs_with_grid(
+    world: &World,
+    world_size: Vec3,
+    k_bind: f64,
+    grid: &mut SpatialGrid,
+) -> Vec<BoundPair> {
+    let cutoff = bind_cutoff(k_bind);
 
     let mut particles: Vec<Particle> = Vec::with_capacity(world.len());
     let mut types: Vec<AtomType> = Vec::with_capacity(world.len());
@@ -123,7 +146,6 @@ pub fn collect_bound_pairs(world: &World, world_size: Vec3, k_bind: f64) -> Vec<
         types.push(*at);
     });
 
-    let mut grid = SpatialGrid::new(world_size, cutoff);
     grid.build(&particles);
     let mut candidates = Vec::new();
     grid.neighbors(&particles, cutoff, &mut candidates);

@@ -67,6 +67,17 @@ pub struct PhysicsConfig {
     pub thermal_constant: f64,
     /// Reference gravitational acceleration (future law).
     pub gravity_constant: f64,
+    /// Effective Coulomb constant of the electrostatics law (energy·distance
+    /// per elementary charge²). `F = k_e·q_i·q_j/r²`.
+    #[serde(default = "default_coulomb_constant")]
+    pub coulomb_constant: f64,
+    /// Cutoff of the electrostatics term, in multiples of the maximum σ
+    /// (default: same as the LJ).
+    #[serde(default = "default_coulomb_cutoff")]
+    pub coulomb_cutoff: f64,
+    /// Cutoff of the gravitational term, in multiples of the maximum σ.
+    #[serde(default = "default_gravity_cutoff")]
+    pub gravity_cutoff: f64,
     /// Target temperature of the thermostat (kelvin).
     #[serde(default = "default_thermostat_temperature")]
     pub thermostat_temperature: f64,
@@ -91,6 +102,18 @@ const fn default_thermostat_tau() -> f64 {
     20.0
 }
 
+const fn default_coulomb_constant() -> f64 {
+    1.0
+}
+
+const fn default_coulomb_cutoff() -> f64 {
+    2.5
+}
+
+const fn default_gravity_cutoff() -> f64 {
+    3.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", default)]
 pub struct SystemsConfig {
@@ -103,10 +126,20 @@ pub struct SystemsConfig {
     /// Enables intermolecular forces (Lennard-Jones) and velocity Verlet
     /// integration. When active, `enable_movement` is ignored.
     pub enable_forces: bool,
+    /// Enables the electrostatics law (Coulomb) between charges, on top of the
+    /// LJ term. Charge is a per-species law constant (see `forces::charge`).
+    pub enable_electrostatics: bool,
+    /// Enables the gravitational law between masses, on top of the LJ term.
+    /// Truncated at `physics.gravity_cutoff`.
+    pub enable_gravity: bool,
     /// Enables the Berendsen thermostat (velocity rescaling): drives the
     /// equipartition temperature toward `physics.thermostat_temperature`.
     /// It is an **instrument**, not a law (opt-in NVT).
     pub enable_thermostat: bool,
+    /// Enables the persistent-bond observation: pairs whose bound episode
+    /// survives `stats.bond_min_periods` vibrational periods are recorded in
+    /// the `Bonds` component. Observation only — no bond law exists.
+    pub enable_bond_observation: bool,
 }
 
 impl Default for SystemsConfig {
@@ -116,7 +149,10 @@ impl Default for SystemsConfig {
             enable_boundaries: true,
             enable_collisions: false,
             enable_forces: true,
+            enable_electrostatics: false,
+            enable_gravity: false,
             enable_thermostat: false,
+            enable_bond_observation: false,
         }
     }
 }
@@ -142,6 +178,14 @@ pub struct StatsConfig {
     pub xyz_prefix: String,
     /// Every how many ticks a position frame is dumped.
     pub xyz_interval: u64,
+    /// Episodes shorter than this many vibrational periods of the pair do not
+    /// count as a persistent bond (bond observation).
+    #[serde(default = "default_bond_min_periods")]
+    pub bond_min_periods: f64,
+    /// Binding threshold of the bond observation, as a multiple of the pair's
+    /// mixed σ: a pair is "bound" while `r < bond_k_bind·σ_ij`.
+    #[serde(default = "default_bond_k_bind")]
+    pub bond_k_bind: f64,
 }
 
 impl Default for StatsConfig {
@@ -154,8 +198,18 @@ impl Default for StatsConfig {
             csv_interval: 10,
             xyz_prefix: String::new(),
             xyz_interval: 100,
+            bond_min_periods: 10.0,
+            bond_k_bind: 1.5,
         }
     }
+}
+
+const fn default_bond_min_periods() -> f64 {
+    10.0
+}
+
+const fn default_bond_k_bind() -> f64 {
+    1.5
 }
 
 impl Config {
@@ -177,6 +231,9 @@ impl Config {
                 speed_limit: 1_000.0,
                 thermal_constant: 0.01,
                 gravity_constant: 6.674e-11,
+                coulomb_constant: 1.0,
+                coulomb_cutoff: 2.5,
+                gravity_cutoff: 3.0,
                 thermostat_temperature: 300.0,
                 thermostat_tau: 20.0,
             },
@@ -285,6 +342,11 @@ speed_limit = 1000.0
 thermal_constant = 0.01
 # Reference gravitational constant (future law).
 gravity_constant = 6.674e-11
+# Electrostatics (Coulomb): effective constant and cutoff (× max σ).
+coulomb_constant = 1.0
+coulomb_cutoff = 2.5
+# Gravity cutoff (× max σ): the term is truncated and smoothly switched.
+gravity_cutoff = 3.0
 # Thermostat target temperature (kelvin) and relaxation time (ticks).
 thermostat_temperature = 300.0
 thermostat_tau = 20.0
@@ -296,9 +358,17 @@ enable_boundaries = true
 # prevents overlap, so impulse collisions are not necessary.
 enable_collisions = false
 enable_forces = true
+# Additional laws, off by default: electrostatics (charges in the element
+# table) and gravity (truncated). Both are added to the LJ force pass.
+enable_electrostatics = false
+enable_gravity = false
 # Berendsen thermostat (velocity rescaling) for NVT runs. An instrument, not a
 # law: off by default (NVE conserves energy).
 enable_thermostat = false
+# Persistent-bond observation: records in the Bonds component the pairs whose
+# bound episode survives `bond_min_periods` vibrational periods. Observation
+# only — no bond law exists.
+enable_bond_observation = false
 
 [stats]
 # Observation, not physics: velocity histogram.
@@ -312,4 +382,7 @@ csv_path = "data/stats.csv"
 csv_interval = 10
 xyz_prefix = "data/frames/frame"
 xyz_interval = 200
+# Persistent-bond observation thresholds.
+bond_min_periods = 10.0
+bond_k_bind = 1.5
 "#;

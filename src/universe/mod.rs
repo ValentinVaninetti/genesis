@@ -9,7 +9,9 @@ pub mod time;
 
 pub use time::Time;
 
-use crate::components::{Acceleration, AtomType, Charge, Mass, Position, Velocity};
+use crate::components::{
+    Acceleration, AtomType, Bonds, Charge, Mass, Position, Velocity,
+};
 use crate::config::Config;
 use crate::ecs::{Resources, World};
 use crate::math::Vec3;
@@ -19,8 +21,8 @@ use crate::scheduler::{Scheduler, SystemContext};
 use crate::serialization::{load_universe, save_universe, LoadError, SaveError, UniverseState};
 use crate::stats::{CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
 use crate::systems::{
-    BoundarySystem, CollisionSystem, ForceSystem, MovementSystem, PositionDrift, StatsSystem,
-    StructureSystem, ThermostatSystem, VelocityHalfKick,
+    BondObservationSystem, BoundarySystem, CollisionSystem, ForceSystem, MovementSystem,
+    PositionDrift, StatsSystem, StructureSystem, ThermostatSystem, VelocityHalfKick,
 };
 use std::fmt;
 use std::path::Path;
@@ -60,6 +62,7 @@ impl Universe {
             mean_size: 0.0,
             bound_pairs: 0,
         });
+        resources.insert(crate::stats::BondObservation::default());
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -94,6 +97,7 @@ impl Universe {
             mean_size: 0.0,
             bound_pairs: 0,
         });
+        resources.insert(crate::stats::BondObservation::default());
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -231,7 +235,9 @@ impl Universe {
         let at = elements[self.rng.int(0, (elements.len() - 1) as u64) as usize];
         self.world.insert::<AtomType>(e, at);
         self.world.insert::<Mass>(e, Mass(at.mass()));
-        self.world.insert::<Charge>(e, Charge(0.0));
+        self.world
+            .insert::<Charge>(e, Charge(crate::physics::forces::charge(at)));
+        self.world.insert::<Bonds>(e, Bonds::default());
 
         let sigma = (k * temp / at.mass()).sqrt();
         let vel = Velocity(Vec3::new(
@@ -352,6 +358,9 @@ fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
         }
     }
     if cfg.systems.enable_forces {
+        if cfg.systems.enable_bond_observation {
+            scheduler.add_system(BondObservationSystem::new(cfg));
+        }
         scheduler.add_system(StructureSystem::new(cfg.stats.structure_interval));
     }
     scheduler.add_system(StatsSystem);

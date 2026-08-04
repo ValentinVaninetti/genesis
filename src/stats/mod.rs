@@ -49,6 +49,11 @@ pub struct StatsSnapshot {
     /// Structure summary of the last analysis sampling (None if there are no
     /// forces or it has not been sampled yet).
     pub structure: Option<StructureStats>,
+    /// Persistent-bond pairs of the last tick (0 when the bond observation is
+    /// off). A *different* lens than `structure.bound_pairs`: it requires the
+    /// episode to have survived `bond_min_periods` vibrational periods.
+    #[serde(default)]
+    pub bonded_pairs: usize,
 }
 
 /// Metrics collector with history.
@@ -81,6 +86,7 @@ impl StatsCollector {
                 fps: 0.0,
                 memory_bytes: 0,
                 structure: None,
+                bonded_pairs: 0,
             },
             systems_run: 0,
             fps: 0.0,
@@ -118,6 +124,20 @@ pub struct CollisionCounter(pub u64);
 /// is fully recomputed every tick.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct PotentialEnergy(pub f64);
+
+/// Global resource: persistent-bond observation of the last tick, filled by
+/// `BondObservationSystem` (only when enabled). Observation, not a law.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct BondObservation {
+    /// Tick in which it was measured.
+    pub tick: u64,
+    /// Pairs whose episode has survived the persistence threshold.
+    pub bonded_pairs: usize,
+    /// Entities with at least one persistent bond.
+    pub bonded_entities: usize,
+    /// Mean coordination (bonds per bonded entity).
+    pub mean_coordination: f64,
+}
 
 /// Speed (`|v|`) histogram observed at an instant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
