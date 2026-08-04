@@ -19,20 +19,21 @@ use crate::math::Vec3;
 use crate::physics::forces::pair_potential_raw;
 use crate::physics::grid::min_image;
 use crate::scheduler::{Access, System, SystemContext};
-use crate::stats::{ChemicalStructure, CompositionEntry};
+use crate::stats::{ChemicalStructure, CompositionEntry, Reaction};
 use std::collections::{HashMap, HashSet};
 
 pub struct BondStructureSystem {
     interval: u64,
-    /// Member sets from the previous sample, for lifecycle tracking.
-    prev_keys: HashSet<Vec<u32>>,
+    /// (member set, stoichiometry formula) of each aggregate from the previous
+    /// sample, for lifecycle tracking.
+    prev: Vec<(Vec<u32>, String)>,
 }
 
 impl BondStructureSystem {
     pub fn new(interval: u64) -> Self {
         Self {
             interval: interval.max(1),
-            prev_keys: HashSet::new(),
+            prev: Vec::new(),
         }
     }
 }
@@ -130,23 +131,37 @@ impl System for BondStructureSystem {
                 .then_with(|| a.formula.cmp(&b.formula))
         });
 
-        // 3. Lifecycle events between this sample and the previous one.
-        let current_keys: HashSet<Vec<u32>> =
-            components.iter().map(|c| c.members.clone()).collect();
-        let appeared = current_keys.difference(&self.prev_keys).count() as u64;
-        let disappeared = self.prev_keys.difference(&current_keys).count() as u64;
+        // 3. Lifecycle events between this sample and the previous one, with
+        // the stoichiometry of every transition (observed reactions).
+        let current: Vec<(Vec<u32>, String)> = components
+            .iter()
+            .map(|c| (c.members.clone(), c.formula.clone()))
+            .collect();
+        let current_keys: HashSet<Vec<u32>> = current.iter().map(|(m, _)| m.clone()).collect();
+        let prev_keys: HashSet<Vec<u32>> = self.prev.iter().map(|(m, _)| m.clone()).collect();
+        let appeared = current_keys.difference(&prev_keys).count() as u64;
+        let disappeared = prev_keys.difference(&current_keys).count() as u64;
+
+        let formula_of = |key: &Vec<u32>, by_members: &HashMap<Vec<u32>, &str>| -> String {
+            by_members.get(key).copied().unwrap_or("?").to_string()
+        };
+        let current_by_members: HashMap<Vec<u32>, &str> =
+            current.iter().map(|(m, f)| (m.clone(), f.as_str())).collect();
+        let prev_by_members: HashMap<Vec<u32>, &str> =
+            self.prev.iter().map(|(m, f)| (m.clone(), f.as_str())).collect();
 
         // Fusions: a *new* current component whose member set is the union of
-        // two or more components from the previous sample.
-        let prev_by_members: Vec<&Vec<u32>> = self.prev_keys.iter().collect();
+        // two or more components from the previous sample → reaction
+        // `reactants -> product`.
+        let mut reactions: HashMap<(Vec<String>, Vec<String>), u64> = HashMap::new();
         let mut fusions = 0u64;
-        for new_key in current_keys.difference(&self.prev_keys) {
+        for new_key in current_keys.difference(&prev_keys) {
             let new_set: HashSet<u32> = new_key.iter().copied().collect();
-            let contained: Vec<HashSet<u32>> = prev_by_members
+            let contained: Vec<&Vec<u32>> = prev_keys
                 .iter()
-                .filter_map(|pk| {
+                .filter(|pk| {
                     let s: HashSet<u32> = pk.iter().copied().collect();
-                    (s.is_subset(&new_set)).then_some(s)
+                    s.is_subset(&new_set)
                 })
                 .collect();
             if contained.len() >= 2 {
@@ -154,21 +169,30 @@ impl System for BondStructureSystem {
                     contained.iter().flat_map(|s| s.iter().copied()).collect();
                 if union == new_set {
                     fusions += 1;
+                    let mut reactants: Vec<String> = contained
+                        .iter()
+                        .map(|k| formula_of(k, &prev_by_members))
+                        .collect();
+                    reactants.sort();
+                    let product = formula_of(new_key, &current_by_members);
+                    *reactions
+                        .entry((reactants, vec![product]))
+                        .or_insert(0) += 1;
                 }
             }
         }
 
         // Scissions: a *disappeared* previous component whose member set is
-        // the union of two or more current components.
-        let current_by_members: Vec<&Vec<u32>> = current_keys.iter().collect();
+        // the union of two or more current components → reaction
+        // `reactant -> products`.
         let mut scissions = 0u64;
-        for old_key in self.prev_keys.difference(&current_keys) {
+        for old_key in prev_keys.difference(&current_keys) {
             let old_set: HashSet<u32> = old_key.iter().copied().collect();
-            let contained: Vec<HashSet<u32>> = current_by_members
+            let contained: Vec<&Vec<u32>> = current_keys
                 .iter()
-                .filter_map(|ck| {
+                .filter(|ck| {
                     let s: HashSet<u32> = ck.iter().copied().collect();
-                    (s.is_subset(&old_set)).then_some(s)
+                    s.is_subset(&old_set)
                 })
                 .collect();
             if contained.len() >= 2 {
@@ -176,12 +200,35 @@ impl System for BondStructureSystem {
                     contained.iter().flat_map(|s| s.iter().copied()).collect();
                 if union == old_set {
                     scissions += 1;
+                    let reactant = formula_of(old_key, &prev_by_members);
+                    let mut products: Vec<String> = contained
+                        .iter()
+                        .map(|k| formula_of(k, &current_by_members))
+                        .collect();
+                    products.sort();
+                    *reactions
+                        .entry((vec![reactant], products))
+                        .or_insert(0) += 1;
                 }
             }
         }
 
+        let mut reactions_vec: Vec<Reaction> = reactions
+            .into_iter()
+            .map(|((reactants, products), count)| Reaction {
+                reactants,
+                products,
+                count,
+            })
+            .collect();
+        reactions_vec.sort_by(|a, b| {
+            b.count
+                .cmp(&a.count)
+                .then_with(|| a.reactants.join("+").cmp(&b.reactants.join("+")))
+        });
+
         // 4. Write resource and store current state for next sample.
-        self.prev_keys = current_keys;
+        self.prev = current;
         if let Some(cs) = ctx.resources.get_mut::<ChemicalStructure>() {
             cs.tick = ctx.time.tick;
             cs.aggregates = components.len();
@@ -193,6 +240,7 @@ impl System for BondStructureSystem {
             cs.disappeared = disappeared;
             cs.fusions = fusions;
             cs.scissions = scissions;
+            cs.reactions = reactions_vec;
         }
     }
 }
@@ -352,5 +400,51 @@ mod tests {
         assert_eq!(cs.disappeared, 2, "both dimers are gone");
         assert_eq!(cs.appeared, 1, "the ring is new");
         assert_eq!(cs.fusions, 1, "dimers fused into the ring");
+        assert_eq!(
+            cs.reactions,
+            vec![Reaction {
+                reactants: vec!["Na-O".into(), "Na-O".into()],
+                products: vec!["Na2-O2".into()],
+                count: 1,
+            }],
+            "the fusion is reported as an observed reaction"
+        );
+    }
+
+    #[test]
+    fn scission_from_ring_to_dimers() {
+        let mut world = fused_ring();
+        let mut cfg = Config::default_config();
+        cfg.systems.enable_bond_observation = true;
+        let mut resources = Resources::new();
+        resources.insert(cfg);
+        resources.insert(ChemicalStructure::default());
+        let mut rng = Rng::new(7);
+        let mut time = Time::new(0.0167);
+        let mut stats = StatsCollector::new(16);
+        let mut sys = BondStructureSystem::new(1);
+
+        // Sample 1: the fused ring.
+        drive(&mut sys, &mut world, &mut resources, &mut rng, &mut time, &mut stats, 1);
+        let cs = resources.get::<ChemicalStructure>().unwrap();
+        assert_eq!(cs.aggregates, 1);
+
+        // Replace world with two dimers and sample again.
+        world = two_dimers_and_monomer();
+        drive(&mut sys, &mut world, &mut resources, &mut rng, &mut time, &mut stats, 2);
+        let cs = resources.get::<ChemicalStructure>().unwrap();
+        assert_eq!(cs.aggregates, 2);
+        assert_eq!(cs.disappeared, 1, "the ring is gone");
+        assert_eq!(cs.appeared, 2, "both dimers are new");
+        assert_eq!(cs.scissions, 1, "ring split into dimers");
+        assert_eq!(
+            cs.reactions,
+            vec![Reaction {
+                reactants: vec!["Na2-O2".into()],
+                products: vec!["Na-O".into(), "Na-O".into()],
+                count: 1,
+            }],
+            "the scission is reported as an observed reaction"
+        );
     }
 }

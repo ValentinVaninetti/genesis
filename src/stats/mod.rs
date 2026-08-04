@@ -124,6 +124,26 @@ pub struct ChemicalStructure {
     /// split into two or more current aggregates.
     #[serde(default)]
     pub scissions: u64,
+    /// Stoichiometry transitions observed since the previous sample, deduped
+    /// by reactant/product formulas and counted. Fusions appear as
+    /// `reactants → one product`, scissions as `one reactant → products`.
+    #[serde(default)]
+    pub reactions: Vec<Reaction>,
+}
+
+/// One observed stoichiometry transition between two samples of the bond-graph
+/// lens. `Na-O + Na-O → Na2-O2` (a fusion) or `Na2-O2 → Na-O + Na-O` (a
+/// scission). The formulas are what the observation measured — no reaction
+/// rule is ever programmed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Reaction {
+    /// Formulas of the aggregates consumed (sorted, with multiplicity).
+    pub reactants: Vec<String>,
+    /// Formulas of the aggregates produced (sorted, with multiplicity).
+    pub products: Vec<String>,
+    /// How many times this exact transition was observed this interval.
+    #[serde(default)]
+    pub count: u64,
 }
 
 /// Metrics collector with history.

@@ -158,6 +158,22 @@ fn print_structure(universe: &Universe) {
             "    lifecycle (since last sample): +{} appeared, −{} disappeared, {} fusions, {} scissions",
             chem.appeared, chem.disappeared, chem.fusions, chem.scissions
         );
+        if !chem.reactions.is_empty() {
+            let rxns = chem
+                .reactions
+                .iter()
+                .take(6)
+                .map(|r| {
+                    let mut s = format!("{} -> {}", r.reactants.join(" + "), r.products.join(" + "));
+                    if r.count > 1 {
+                        s.push_str(&format!("  (x{})", r.count));
+                    }
+                    s
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            println!("    observed reactions (since last sample): {}", rxns);
+        }
     }
 }
 

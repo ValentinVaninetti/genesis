@@ -80,12 +80,15 @@ architecture decisions of stage 0 (the foundation).
      at the current distances — negative means bound). It also tracks the
      **stoichiometry lifecycle** between samples: new components appeared,
      disappeared, fusions (several components become one) and scissions (one
-     splits). The snapshot reports aggregates, largest, bonded/monomer counts and
+     splits). It also reports the **observed reactions** since the last sample:
+     each fusion/scission is a stoichiometry transition (`Na-O + Na-O →
+     Na2-O2`), counted and deduped. The snapshot reports aggregates, largest,
+     bonded/monomer counts and
      the composition histogram — structures the physics produced, never
      programmed per species. Reported in the CLI summary, the CSV
      (`chemical_aggregates`, `chemical_appeared`, `chemical_disappeared`,
-     `chemical_fusions`, `chemical_scissions`, `chemical_compositions`) and
-     `ChemicalStructure`.
+     `chemical_fusions`, `chemical_scissions`, `chemical_compositions`,
+     `chemical_reactions`) and `ChemicalStructure`.
 - ✅ **10 elements** (H, He, C, N, O, Na, Si, P, S, Fe) with LJ parameters in
      `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
      Charges follow ionization trends (O −1, Na +1, Si +0.5, metals +1): a
