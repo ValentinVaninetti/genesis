@@ -45,7 +45,7 @@ fn main() {
             let s = &universe.stats.snapshot;
             let structure = s
                 .structure
-                .map(|x| format!(" | ag={} mon={} largest={} bound={} bonds={}", x.aggregates, x.monomers, x.largest, x.bound_pairs, s.bonded_pairs))
+                .map(|x| format!(" | ag={} mon={} largest={} bound={} bonds={} lt={:.0}", x.aggregates, x.monomers, x.largest, x.bound_pairs, s.bonded_pairs, s.bond_lifetime_ticks))
                 .unwrap_or_default();
             println!(
                 "[tick {:>9}] t={:>10.3}s | entities={:>9} | E={:>12.3} | K={:>12.3} | V={:>12.3} | E_avg={:>8.3} | T_avg={:>7.1} | |v|={:>6.3} | collisions={:>8} | fps={:>7.1} | mem={:>8}kB{}",

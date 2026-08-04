@@ -19,7 +19,7 @@ use crate::physics::grid::Particle;
 use crate::rng::Rng;
 use crate::scheduler::{Scheduler, SystemContext};
 use crate::serialization::{load_universe, save_universe, LoadError, SaveError, UniverseState};
-use crate::stats::{CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
+use crate::stats::{BondEnergy, CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
 use crate::systems::{
     BondObservationSystem, BoundarySystem, CollisionSystem, ForceSystem, MovementSystem,
     PositionDrift, StatsSystem, StructureSystem, ThermostatSystem, VelocityHalfKick,
@@ -54,6 +54,7 @@ impl Universe {
         resources.insert(config.clone());
         resources.insert(CollisionCounter::default());
         resources.insert(PotentialEnergy::default());
+        resources.insert(BondEnergy::default());
         resources.insert(StructureStats {
             tick: 0,
             monomers: 0,
@@ -89,6 +90,7 @@ impl Universe {
         resources.insert(config.clone());
         resources.insert(CollisionCounter::default());
         resources.insert(PotentialEnergy::default());
+        resources.insert(BondEnergy::default());
         resources.insert(StructureStats {
             tick: 0,
             monomers: 0,

@@ -11,7 +11,36 @@ use std::io::Write;
 use std::path::Path;
 
 /// Column header of the metrics CSV (one row per sampled tick).
-pub const CSV_HEADER: &str = "tick,time_s,entities,energy_total,energy_kinetic,energy_potential,energy_avg,temperature_avg,mean_speed,density,collisions,systems_run,fps,memory_kb,aggregates,largest,monomers,bound_pairs,bonded_pairs";
+pub const CSV_HEADER: &str = "tick,time_s,entities,energy_total,energy_kinetic,energy_potential,energy_avg,temperature_avg,mean_speed,density,collisions,systems_run,fps,memory_kb,aggregates,largest,monomers,bound_pairs,bonded_pairs,bonds_formed,bond_lifetime_ticks,bond_energy,bond_species";
+
+/// Compact representation of the per-species bond matrix: the non-zero pairs
+/// sorted by count, e.g. `Si-O:12,Na-O:3`. Empty when nothing is bonded. The
+/// matrix is symmetric, so only the lower triangle (including the diagonal)
+/// is emitted.
+pub fn bond_species(matrix: &[f64]) -> String {
+    let n = AtomType::COUNT;
+    let mut pairs: Vec<(String, u64)> = Vec::new();
+    for ia in 0..n {
+        for ib in 0..=ia {
+            let c = matrix.get(ia * n + ib).copied().unwrap_or(0.0);
+            if c > 0.0 {
+                let a = AtomType::ALL[ia].symbol();
+                let b = AtomType::ALL[ib].symbol();
+                pairs.push((format!("{a}-{b}"), c as u64));
+            }
+        }
+    }
+    pairs.sort_by(|x, y| y.1.cmp(&x.1).then_with(|| x.0.cmp(&y.0)));
+    if pairs.is_empty() {
+        String::new()
+    } else {
+        pairs
+            .iter()
+            .map(|(s, c)| format!("{s}:{c}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
 
 /// One row of metrics for the CSV.
 pub fn csv_row(s: &StatsSnapshot) -> String {
@@ -20,7 +49,7 @@ pub fn csv_row(s: &StatsSnapshot) -> String {
         None => (0, 0, 0, 0),
     };
     format!(
-        "{},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.3},{:.1},{},{},{},{},{}",
+        "{},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.3},{:.1},{},{},{},{},{},{},{:.1},{:.6},{}",
         s.tick,
         s.time,
         s.entities,
@@ -40,6 +69,10 @@ pub fn csv_row(s: &StatsSnapshot) -> String {
         monomers,
         bound,
         s.bonded_pairs,
+        s.bonds_formed,
+        s.bond_lifetime_ticks,
+        s.bond_energy,
+        bond_species(&s.bond_matrix),
     )
 }
 
@@ -113,11 +146,27 @@ mod tests {
                 bound_pairs: 1,
             }),
             bonded_pairs: 3,
+            bonds_formed: 4,
+            bond_lifetime_ticks: 25.0,
+            bond_energy: 0.5,
+            bond_matrix: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ],
         };
         assert_eq!(CSV_HEADER.split(',').count(), csv_row(&s).split(',').count());
         let row = csv_row(&s);
         assert!(row.starts_with("7,0.420000,3,"));
-        assert!(row.ends_with("1,2,1,1,3"));
+        // Na–O (5,4) = 3 bonds → "Na-O:3" as the only non-zero species pair.
+        assert!(row.ends_with("4,25.0,0.500000,Na-O:3"));
     }
 
     #[test]

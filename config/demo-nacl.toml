@@ -1,0 +1,52 @@
+# =============================================================
+#  GENESIS — demo: ionic melt (Na⁺/O⁻)
+#  Compose only Na and O (charges +1/−1, ionization trend), turn on
+#  the electrostatics law and the bond observation, and let an ionic
+#  solid/aggregate emerge without programming a single "molecule".
+#  Run:  cargo run --release config/demo-nacl.toml 12000 300
+# =============================================================
+
+[universe]
+name = "NaCl ionic melt"
+size = { x = 40.0, y = 40.0, z = 40.0 }
+dt = 0.016666666666666666
+initial_atoms = 1000
+stats_history = 1024
+
+[rng]
+seed = 7
+
+[physics]
+particle_radius = 0.4
+initial_temperature = 200.0
+speed_limit = 1000.0
+thermal_constant = 0.01
+gravity_constant = 6.674e-11
+# Coulomb law: F = k_e·q_a·q_b/r². Na is +1, O is −1 (see forces.rs).
+coulomb_constant = 1.0
+coulomb_cutoff = 2.5
+
+[systems]
+enable_movement = true
+enable_boundaries = true
+enable_collisions = false
+enable_forces = true
+enable_electrostatics = true
+enable_gravity = false
+enable_thermostat = false
+# Observe persistent pairs (r < 1.5·σ surviving 5 vibrational periods) and
+# couple them with a harmonic spring toward the LJ minimum.
+enable_bond_observation = true
+enable_bond_interaction = true
+
+[stats]
+histogram_bins = 32
+histogram_max_speed = 10.0
+structure_interval = 100
+# Faster bond formation for the demo.
+bond_min_periods = 5
+bond_k_bind = 1.5
+csv_path = "data/nacl-stats.csv"
+csv_interval = 20
+xyz_prefix = "data/nacl-frames/frame"
+xyz_interval = 200

@@ -59,7 +59,8 @@ pub const LJ_CUTOFF_FACTOR: f64 = 2.5;
 /// at `r_min` (avoids the `r→0` divergence with finite `dt`).
 pub const LJ_NUCLEUS: f64 = 0.5;
 
-fn element_index(t: AtomType) -> usize {
+/// Index of an element in the `ELEMENTS` table and the species matrix.
+pub fn element_index(t: AtomType) -> usize {
     match t {
         AtomType::Hydrogen => 0,
         AtomType::Helium => 1,
@@ -164,20 +165,45 @@ impl LjTable {
         self.pair[i][j]
     }
 
-    /// Force (on `a`, along `normal` pointing from `b` towards `a`) and
-    /// potential contribution, with the potential truncated and *switched* so
-    /// that both energy and force tend smoothly to 0 at `rc`.
-    ///
-    /// `r` must be `< rc`; below `LJ_NUCLEUS·σ` it is evaluated at that point
-    /// (hardened nucleus).
-    #[inline]
-    pub fn force_switched(&self, p: LjPair, r: f64, normal: Vec3) -> (Vec3, f64) {
-        let r = r.max(LJ_NUCLEUS * p.sigma);
-        let (m, v) = lj_raw(p, r);
-        let (sw, dsw) = smooth_cutoff(r, self.r_on, self.rc);
-        let (f_mag, v_sw) = switched(m, v, sw, dsw);
-        (normal * f_mag, v_sw)
-    }
+/// Force (on `a`, along `normal` pointing from `b` towards `a`) and
+/// potential contribution, with the potential truncated and *switched* so
+/// that both energy and force tend smoothly to 0 at `rc`.
+///
+/// `r` must be `< rc`; below `LJ_NUCLEUS·σ` it is evaluated at that point
+/// (hardened nucleus).
+#[inline]
+pub fn force_switched(&self, p: LjPair, r: f64, normal: Vec3) -> (Vec3, f64) {
+    let (m, v) = self.force_switched_scalar(p, r);
+    (normal * m, v)
+}
+
+/// Scalar magnitude (along the normal) and potential of the smooth-switched
+/// LJ term. Used by once-per-pair force passes, where the same magnitude is
+/// applied to both ends (Newton's 3rd law, momentum conserved exactly).
+#[inline]
+pub fn force_switched_scalar(&self, p: LjPair, r: f64) -> (f64, f64) {
+    let r = r.max(LJ_NUCLEUS * p.sigma);
+    let (m, v) = lj_raw(p, r);
+    let (sw, dsw) = smooth_cutoff(r, self.r_on, self.rc);
+    switched(m, v, sw, dsw)
+}
+}
+
+/// Equilibrium distance of the LJ well: `r_eq = σ·2^(1/6)`, where V = −ε and
+/// the force vanishes.
+#[inline]
+pub fn equilibrium_distance(sigma: f64) -> f64 {
+    sigma * 2.0f64.powf(1.0 / 6.0)
+}
+
+/// Raw harmonic bond term (magnitude along the normal and potential):
+/// `F = −k·(r − r_eq)`, `V = ½·k·(r − r_eq)²`. The minimum is at `r_eq` with
+/// `V = 0`, so a smooth-switched truncation below the binding radius keeps
+/// the total force continuous and the energy conserved.
+#[inline]
+pub fn bond_harmonic_raw(k: f64, r_eq: f64, r: f64) -> (f64, f64) {
+    let dr = r - r_eq;
+    (-k * dr, 0.5 * k * dr * dr)
 }
 
 /// Smoothing factor `[0,1]` and its derivative with respect to `r`.
@@ -190,6 +216,9 @@ impl LjTable {
 pub fn smooth_cutoff(r: f64, r_on: f64, rc: f64) -> (f64, f64) {
     if r <= r_on {
         return (1.0, 0.0);
+    }
+    if r >= rc {
+        return (0.0, 0.0);
     }
     let u = (r - r_on) / (rc - r_on);
     let u2 = u * u;
@@ -286,8 +315,34 @@ mod tests {
     }
 
     #[test]
-    fn switch_vanishes_at_cutoff() {
-        let t = table();
+    fn bond_harmonic_switched_is_exact_derivative() {
+        // The switched harmonic term must be conservative: F = −dV/dr, with
+        // V(r) = V_raw·sw. Otherwise the observed-bond interaction would leak
+        // energy.
+        let k = 5.0;
+        let r_eq = 2.0;
+        let r_on = 2.0;
+        let rc = 2.6;
+        let h = 1e-6;
+        let v_sw = |x: f64| {
+            let (_, v) = bond_harmonic_raw(k, r_eq, x);
+            let (sw, _) = smooth_cutoff(x, r_on, rc);
+            v * sw
+        };
+        for r in [2.0, 2.1, 2.3, 2.5, 2.59] {
+            let (m, v) = bond_harmonic_raw(k, r_eq, r);
+            let (sw, dsw) = smooth_cutoff(r, r_on, rc);
+            let (f, _) = switched(m, v, sw, dsw);
+            let num = -(v_sw(r + h) - v_sw(r - h)) / (2.0 * h);
+            assert!(
+                (f - num).abs() < 1e-4 * f.abs().max(1.0),
+                "r={r}: F={f} vs -dV/dr={num}"
+            );
+        }
+    }
+
+    #[test]
+    fn switch_vanishes_at_cutoff() {        let t = table();
         let p = t.pair(AtomType::Oxygen, AtomType::Oxygen);
         let r = t.rc();
         assert!(r > p.sigma);

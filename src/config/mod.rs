@@ -140,6 +140,12 @@ pub struct SystemsConfig {
     /// survives `stats.bond_min_periods` vibrational periods are recorded in
     /// the `Bonds` component. Observation only — no bond law exists.
     pub enable_bond_observation: bool,
+    /// Enables the physical coupling of the *observed* bonds: a pair recorded
+    /// in `Bonds` feels a harmonic spring towards the LJ equilibrium distance
+    /// (`k = well_curvature`, switched before the binding radius). The bond is
+    /// still never programmed per species — it only exists because the
+    /// observation measured it. Implies the observation itself is useful.
+    pub enable_bond_interaction: bool,
 }
 
 impl Default for SystemsConfig {
@@ -153,6 +159,7 @@ impl Default for SystemsConfig {
             enable_gravity: false,
             enable_thermostat: false,
             enable_bond_observation: false,
+            enable_bond_interaction: false,
         }
     }
 }
@@ -254,14 +261,16 @@ impl Config {
     }
 
     /// Tries to load the file; if it does not exist, uses the default and
-    /// persists it.
+    /// persists it (create-on-first-run). If the file exists but is invalid,
+    /// falls back to the defaults **without touching the file**: a broken
+    /// config must never be silently destroyed.
     pub fn from_file_or_default(path: impl AsRef<Path>) -> Self {
         match Self::from_file(path.as_ref()) {
             Ok(c) => c,
-            Err(e) => {
+            Err(_) if !path.as_ref().exists() => {
                 eprintln!(
-                    "[genesis] configuration not loaded ({}): using default values",
-                    e
+                    "[genesis] configuration not found: creating `{}` with default values",
+                    path.as_ref().display()
                 );
                 let c = Self::default_config();
                 let _ = std::fs::create_dir_all(
@@ -270,6 +279,13 @@ impl Config {
                 let text = toml::to_string_pretty(&c).expect("config serializable");
                 let _ = std::fs::write(path.as_ref(), text);
                 c
+            }
+            Err(e) => {
+                eprintln!(
+                    "[genesis] configuration not loaded ({}): using default values",
+                    e
+                );
+                Self::default_config()
             }
         }
     }
@@ -369,6 +385,10 @@ enable_thermostat = false
 # bound episode survives `bond_min_periods` vibrational periods. Observation
 # only — no bond law exists.
 enable_bond_observation = false
+# Physical coupling of the observed bonds: a pair recorded in Bonds feels a
+# harmonic spring towards the LJ equilibrium distance. The bond is still never
+# programmed per species — it only exists because the observation measured it.
+enable_bond_interaction = false
 
 [stats]
 # Observation, not physics: velocity histogram.
@@ -386,3 +406,97 @@ xyz_interval = 200
 bond_min_periods = 10.0
 bond_k_bind = 1.5
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "genesis-config-{}-{}",
+            std::process::id(),
+            name
+        ))
+    }
+
+    #[test]
+    fn invalid_existing_config_is_never_overwritten() {
+        let p = temp_path("invalid.toml");
+        let original = "this is not [valid toml\n";
+        std::fs::write(&p, original).unwrap();
+
+        let c = Config::from_file_or_default(&p);
+
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(after, original, "broken config was clobbered by defaults");
+        assert_eq!(c.universe.name, "Genesis");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn missing_config_is_created_with_defaults() {
+        let p = temp_path("missing.toml");
+        let _ = std::fs::remove_file(&p);
+
+        let c = Config::from_file_or_default(&p);
+
+        assert!(p.exists(), "default config was not persisted");
+        let reparsed = Config::from_file(&p).expect("persisted default reparses");
+        assert_eq!(reparsed.universe.initial_atoms, c.universe.initial_atoms);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn physics_requires_its_mandatory_fields() {
+        let text = r#"
+            [universe]
+            name = "t"
+            size = { x = 10.0, y = 10.0, z = 10.0 }
+            dt = 0.02
+            initial_atoms = 100
+            stats_history = 256
+
+            [rng]
+            seed = 1
+
+            [physics]
+            initial_temperature = 300.0
+            speed_limit = 1000.0
+        "#;
+        assert!(
+            Config::from_toml(text).is_err(),
+            "gravity_constant must be required (fail-fast, never invented values)"
+        );
+    }
+
+    #[test]
+    fn partial_config_with_optional_knobs_only_works() {
+        let text = r#"
+            [universe]
+            name = "t"
+            size = { x = 10.0, y = 10.0, z = 10.0 }
+            dt = 0.02
+            initial_atoms = 100
+            stats_history = 256
+
+            [rng]
+            seed = 1
+
+            [physics]
+            initial_temperature = 300.0
+            speed_limit = 1000.0
+            gravity_constant = 6.674e-11
+
+            [systems]
+            enable_electrostatics = true
+            enable_bond_observation = true
+            enable_bond_interaction = true
+        "#;
+        let c = Config::from_toml(text).expect("valid partial config");
+        assert!(c.systems.enable_electrostatics);
+        assert!(c.systems.enable_bond_observation);
+        assert!(c.systems.enable_bond_interaction);
+        assert_eq!(c.physics.coulomb_constant, 1.0);
+        assert_eq!(c.stats.bond_min_periods, 10.0);
+    }
+}

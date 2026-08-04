@@ -8,7 +8,9 @@
 use crate::components::{Mass, Velocity};
 use crate::config::Config;
 use crate::scheduler::{Access, System, SystemContext};
-use crate::stats::{BondObservation, CollisionCounter, PotentialEnergy, StatsSnapshot, StructureStats};
+use crate::stats::{
+    BondEnergy, BondObservation, CollisionCounter, PotentialEnergy, StatsSnapshot, StructureStats,
+};
 
 pub struct StatsSystem;
 
@@ -26,6 +28,7 @@ impl System for StatsSystem {
             .resource_read::<PotentialEnergy>()
             .resource_read::<StructureStats>()
             .resource_read::<BondObservation>()
+            .resource_read::<BondEnergy>()
     }
 
     fn run(&mut self, ctx: &mut SystemContext<'_>) {
@@ -50,6 +53,28 @@ impl System for StatsSystem {
             .get::<BondObservation>()
             .map(|b| b.bonded_pairs)
             .unwrap_or(0);
+        let bonds_formed = ctx
+            .resources
+            .get::<BondObservation>()
+            .map(|b| b.bonds_formed)
+            .unwrap_or(0);
+        let bond_lifetime_ticks = ctx.resources.get::<BondObservation>().map_or(0.0, |b| {
+            if b.bonds_formed > 0 {
+                b.lifetime_sum_ticks / b.bonds_formed as f64
+            } else {
+                0.0
+            }
+        });
+        let bond_matrix = ctx
+            .resources
+            .get::<BondObservation>()
+            .map(|b| b.species_matrix.iter().map(|&c| c as f64).collect())
+            .unwrap_or_default();
+        let bond_energy = ctx
+            .resources
+            .get::<BondEnergy>()
+            .map(|be| be.0)
+            .unwrap_or(0.0);
 
         let mut kinetic = 0.0;
         let mut speed_sum = 0.0;
@@ -84,8 +109,9 @@ impl System for StatsSystem {
             tick: ctx.time.tick,
             time: ctx.time.t,
             entities: ctx.world.len(),
-            // Total energy: kinetic + potential (conserved by Verlet).
-            energy_total: kinetic + energy_potential,
+            // Total energy: kinetic + potential (including the observed-bond
+            // harmonic term), conserved by Verlet in every mode.
+            energy_total: kinetic + energy_potential + bond_energy,
             energy_avg,
             energy_potential,
             temperature_avg,
@@ -101,6 +127,10 @@ impl System for StatsSystem {
             memory_bytes: ctx.world.memory_bytes(),
             structure,
             bonded_pairs,
+            bonds_formed,
+            bond_lifetime_ticks,
+            bond_energy,
+            bond_matrix,
         };
         ctx.stats.record(snapshot);
     }

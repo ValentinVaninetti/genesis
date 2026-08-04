@@ -18,6 +18,32 @@ pub mod pairs;
 /// well of the LJ potential (whose minimum lives at `1.12·σ`).
 pub const BOND_FACTOR: f64 = 1.5;
 
+/// Population cap for the `g(r)` pair counting. The broadphase grid uses a
+/// cell of `r_max`, and with `r_max ≈ L/2` (the default of the CLI summary) a
+/// large box leaves few cells and O(n²) pairs. Above this cap a deterministic
+/// evenly-spaced subsample is used, which keeps the box coverage and the mean
+/// density of the sample, so `g(r)` stays representative while the cost is
+/// bounded.
+const G_SAMPLE_CAP: usize = 8192;
+
+/// Deterministic, evenly-spaced subsample of a population (and its types).
+/// Returns the input unchanged (as owned copies) when below the cap.
+fn g_subsample(particles: &[Particle], types: &[AtomType]) -> (Vec<Particle>, Vec<AtomType>) {
+    let with_types = types.len() == particles.len();
+    if particles.len() <= G_SAMPLE_CAP {
+        return (particles.to_vec(), types.to_vec());
+    }
+    let step = particles.len() / G_SAMPLE_CAP + 1;
+    let count = particles.len() / step;
+    let pts: Vec<Particle> = (0..count).map(|i| particles[i * step]).collect();
+    let tys: Vec<AtomType> = if with_types {
+        (0..count).map(|i| types[i * step]).collect()
+    } else {
+        Vec::new()
+    };
+    (pts, tys)
+}
+
 /// Radial distribution function `g(r)` of the system.
 ///
 /// Normalized so that `g(r) → 1` in an ideal gas: each shell is divided by
@@ -69,6 +95,10 @@ pub fn radial_distribution(
     let dr = r_max / nbins as f64;
     let vol = world_size.x * world_size.y * world_size.z;
 
+    let (subsample, _) = g_subsample(particles, &[]);
+    let particles = subsample.as_slice();
+    let n = particles.len();
+
     let mut grid = SpatialGrid::new(world_size, r_max);
     grid.build(particles);
     let mut pairs = Vec::new();
@@ -85,7 +115,6 @@ pub fn radial_distribution(
         counts[(d / dr) as usize] += 1;
     }
 
-    let n = particles.len();
     let mut bins = vec![0.0f64; nbins];
     if n < 2 {
         return RadialDistribution { r_max, dr, bins };
@@ -124,6 +153,10 @@ pub fn radial_distribution_between(
     let r_max = r_max.max(1e-9).min(half_min);
     let dr = r_max / nbins as f64;
     let vol = world_size.x * world_size.y * world_size.z;
+
+    let (subsample, subsample_types) = g_subsample(particles, types);
+    let particles = subsample.as_slice();
+    let types = subsample_types.as_slice();
     let na = types.iter().filter(|&&t| t == ta).count();
     let nb = types.iter().filter(|&&t| t == tb).count();
 

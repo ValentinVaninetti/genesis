@@ -44,6 +44,20 @@ enable_forces = true
 # Berendsen thermostat (velocity rescaling) for NVT runs. An instrument, not a
 # law: off by default (NVE conserves energy).
 enable_thermostat = false
+# Electrostatics law (Coulomb) between per-species charges (O −1, Na +1, Si
+# +0.5, metals +1). Charge is a law constant, not a programmed bond.
+enable_electrostatics = false
+# Gravitational law between masses (truncated at physics.gravity_cutoff).
+enable_gravity = false
+# Persistent-bond observation: pairs whose bound episode survives
+# stats.bond_min_periods vibrational periods get recorded in the `Bonds`
+# component. Observation only — it does not affect the dynamics by itself.
+enable_bond_observation = false
+# Physical coupling of the *observed* bonds: a pair in `Bonds` feels a
+# harmonic spring toward the LJ equilibrium distance (k = well curvature,
+# switched off before the binding radius). Nothing is programmed per species:
+# the bond only exists because the observation measured it.
+enable_bond_interaction = false
 
 [stats]
 # Observation, not physics: velocity histogram.
@@ -51,6 +65,11 @@ histogram_bins = 32
 histogram_max_speed = 10.0
 # Every how many ticks the aggregates are measured (emergent structure).
 structure_interval = 100
+# Persistent-bond thresholds (bond observation): an episode shorter than
+# `bond_min_periods` vibrational periods of the pair does not count; a pair is
+# "bound" while r < bond_k_bind·σ_ij.
+bond_min_periods = 10.0
+bond_k_bind = 1.5
 # Observability exports (disabled when empty): metrics CSV and position
 # frames (XYZ) to plot outside the engine (matplotlib, gnuplot, OVITO).
 csv_path = "data/stats.csv"

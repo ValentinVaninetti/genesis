@@ -41,6 +41,9 @@ architecture decisions of stage 0 (the foundation).
      normalization and aggregate detection with friends-of-friends
      (`src/analysis/`). `StructureSystem` samples every `stats.structure_interval`
      ticks and the snapshot reports aggregates/monomers/largest/bound pairs.
+     For large populations the CLI's final g(r) uses a deterministic
+     even-spaced subsample, so the O(n²) worst case (few cells when
+     `r_max ≈ L/2`) is bounded.
 - ✅ **Berendsen thermostat** (velocity rescaling, opt-in via
      `[systems].enable_thermostat`): drives the equipartition temperature to
      `physics.thermostat_temperature` for NVT runs. It is an instrument, not a
@@ -51,8 +54,27 @@ architecture decisions of stage 0 (the foundation).
      first) — an emergent consequence of the heterogeneous ε wells.
 - ✅ **Parallel forces** (rayon): the LJ force pass accumulates per-particle
      forces in parallel (~3× on 8 cores) with deterministic collection order.
+     Each pair is evaluated **once** and contributes ±F to its two ends
+     (Newton's 3rd law, momentum conserved exactly; the potential is counted
+     once, no halving). The result is bit-identical across thread counts.
+- ✅ **Bond observation** (`[systems].enable_bond_observation`, emergent):
+     `BondObservationSystem` tracks bound pairs (r < 1.5·σ) with a debounce,
+     marks a pair **persistent** after `bond_min_periods` of its own
+     vibrational period and writes the `Bonds` component. Statistics per tick:
+     bonded pairs/entities, mean coordination, a per-species **bond matrix**
+     (`bond_species` in the CSV) and closed **bond lifetimes** (formed bonds +
+     mean lifetime, in `status_line` and CSV).
+- ✅ **Observed bond as an interaction** (`[systems].enable_bond_interaction`,
+     opt-in): persistent pairs act as a **harmonic spring** toward the LJ well
+     minimum `σ·2^(1/6)` with the well curvature as k, smooth-switched off at
+     the binding radius `bond_k_bind·σ` so the force stays continuous. Its
+     energy is the exact derivative of its switched potential (verified), so
+     NVE stays conserved with bonds on. Bonds are still never programmed: only
+     pairs that observation already declared persistent feel the spring.
 - ✅ **10 elements** (H, He, C, N, O, Na, Si, P, S, Fe) with LJ parameters in
      `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
+     Charges follow ionization trends (O −1, Na +1, Si +0.5, metals +1): a
+     `config/demo-nacl.toml` composes Na⁺/O⁻ to observe ionic aggregates.
 - ✅ **Observability exports** (`src/export/`): metrics CSV (`[stats].csv_path`,
      appended every `csv_interval` ticks) and position frames in XYZ
      (`[stats].xyz_prefix`, one `frame_{tick:08}.xyz` per `xyz_interval` ticks)

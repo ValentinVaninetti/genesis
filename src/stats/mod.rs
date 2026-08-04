@@ -54,6 +54,20 @@ pub struct StatsSnapshot {
     /// episode to have survived `bond_min_periods` vibrational periods.
     #[serde(default)]
     pub bonded_pairs: usize,
+    /// Cumulative persistent bonds observed so far.
+    #[serde(default)]
+    pub bonds_formed: u64,
+    /// Mean lifetime (ticks) of the closed persistent bonds.
+    #[serde(default)]
+    pub bond_lifetime_ticks: f64,
+    /// Potential energy contributed by the observed bonds (0 when the bond
+    /// interaction is off). Part of `energy_total`.
+    #[serde(default)]
+    pub bond_energy: f64,
+    /// Bond counts by species pair (flattened COUNT×COUNT, symmetric), from
+    /// the last bond observation.
+    #[serde(default)]
+    pub bond_matrix: Vec<f64>,
 }
 
 /// Metrics collector with history.
@@ -87,6 +101,10 @@ impl StatsCollector {
                 memory_bytes: 0,
                 structure: None,
                 bonded_pairs: 0,
+                bonds_formed: 0,
+                bond_lifetime_ticks: 0.0,
+                bond_energy: 0.0,
+                bond_matrix: Vec::new(),
             },
             systems_run: 0,
             fps: 0.0,
@@ -120,14 +138,21 @@ impl StatsCollector {
 pub struct CollisionCounter(pub u64);
 
 /// Global resource: total potential energy of the current tick
-/// (Lennard-Jones), accumulated by the force system. Not persistent state: it
-/// is fully recomputed every tick.
+/// (Lennard-Jones + optional Coulomb/gravity), accumulated by the force
+/// system. Not persistent state: it is fully recomputed every tick.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct PotentialEnergy(pub f64);
 
+/// Global resource: the part of the potential energy that comes from the
+/// *observed* bonds (harmonic, see `systems.enable_bond_interaction`), filled
+/// by the force system. It is included in `PotentialEnergy` and reported
+/// separately for observability.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct BondEnergy(pub f64);
+
 /// Global resource: persistent-bond observation of the last tick, filled by
 /// `BondObservationSystem` (only when enabled). Observation, not a law.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BondObservation {
     /// Tick in which it was measured.
     pub tick: u64,
@@ -137,6 +162,15 @@ pub struct BondObservation {
     pub bonded_entities: usize,
     /// Mean coordination (bonds per bonded entity).
     pub mean_coordination: f64,
+    /// Cumulative persistent bonds ever observed (episodes that reached the
+    /// threshold and later broke). The "bond count" of the run.
+    pub bonds_formed: u64,
+    /// Sum of the lifetimes (in ticks) of the closed persistent bonds; the
+    /// mean is `lifetime_sum_ticks / bonds_formed`.
+    pub lifetime_sum_ticks: f64,
+    /// Current bond counts by species pair: flattened `COUNT×COUNT` matrix,
+    /// symmetric (the pair Si–O increments both `Si,O` and `O,Si`).
+    pub species_matrix: Vec<u64>,
 }
 
 /// Speed (`|v|`) histogram observed at an instant.
