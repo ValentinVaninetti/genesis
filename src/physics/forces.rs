@@ -266,6 +266,35 @@ pub fn lj_raw(p: LjPair, r: f64) -> (f64, f64) {
     (m, v)
 }
 
+/// Observed binding energy of a pair at distance `r` (raw, unswitched): the
+/// Lennard-Jones term plus, if enabled, the Coulomb and harmonic-bond terms —
+/// the same laws the force pass composes. Negative means bound (attractive).
+/// It is an observation lens for the chemical aggregates, not a law.
+pub fn pair_potential_raw(
+    thermal_constant: f64,
+    a: AtomType,
+    b: AtomType,
+    r: f64,
+    k_e: f64,
+    with_coulomb: bool,
+    with_bond: bool,
+) -> f64 {
+    let sig = mix_sigma(a, b);
+    let eps = mix_epsilon(thermal_constant, a, b);
+    let (_, v) = lj_raw(LjPair { sigma: sig, epsilon: eps }, r);
+    let mut total = v;
+    if with_coulomb {
+        let q = k_e * charge(a) * charge(b);
+        total += q / r;
+    }
+    if with_bond {
+        let k = well_curvature(eps, sig);
+        let r_eq = equilibrium_distance(sig);
+        total += 0.5 * k * (r - r_eq) * (r - r_eq);
+    }
+    total
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

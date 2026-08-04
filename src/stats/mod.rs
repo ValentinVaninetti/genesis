@@ -77,12 +77,17 @@ pub struct StatsSnapshot {
 
 /// One stoichiometry observed in the bond-graph components, with how many
 /// components have it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositionEntry {
     /// e.g. `Na-O`, `Na2-O`.
     pub formula: String,
     /// Number of components with exactly this composition.
     pub count: u64,
+    /// Mean observed binding energy of the components with this composition
+    /// (raw unswitched pair potentials summed per aggregate). Negative means
+    /// bound (attractive). 0.0 when no binding data is available.
+    #[serde(default)]
+    pub mean_binding: f64,
 }
 
 /// Connected components of the persistent-bond graph, measured like
@@ -104,6 +109,21 @@ pub struct ChemicalStructure {
     /// Composition histogram: stoichiometry → number of components, ordered by
     /// descending count.
     pub compositions: Vec<CompositionEntry>,
+    /// Lifecycle deltas since the previous sample: how many aggregates were
+    /// born and died between the last two structure samplings.
+    #[serde(default)]
+    pub appeared: u64,
+    #[serde(default)]
+    pub disappeared: u64,
+    /// Fusion events since the previous sample: a current aggregate whose
+    /// members are the union of two or more aggregates from the previous
+    /// sample.
+    #[serde(default)]
+    pub fusions: u64,
+    /// Scission events since the previous sample: a previous aggregate that
+    /// split into two or more current aggregates.
+    #[serde(default)]
+    pub scissions: u64,
 }
 
 /// Metrics collector with history.

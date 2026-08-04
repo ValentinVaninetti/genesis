@@ -75,11 +75,17 @@ architecture decisions of stage 0 (the foundation).
      the **"chemistry" lens**. Instead of spatial proximity (friends-of-friends
      of `StructureSystem`) it takes the **persistent-bond graph** written by the
      bond observation and measures its connected components; each component is
-     labeled with its **stoichiometry** (e.g. `Na-O`, `Na2-O`, `C3`). The
-     snapshot reports the number of aggregates, largest, bonded/monomer counts
-     and a composition histogram — the structures the physics produced, never
+     labeled with its **stoichiometry** (e.g. `Na-O`, `Na2-O`, `C3`) and its
+     **observed binding energy** (the raw LJ + Coulomb + bond potential evaluated
+     at the current distances — negative means bound). It also tracks the
+     **stoichiometry lifecycle** between samples: new components appeared,
+     disappeared, fusions (several components become one) and scissions (one
+     splits). The snapshot reports aggregates, largest, bonded/monomer counts and
+     the composition histogram — structures the physics produced, never
      programmed per species. Reported in the CLI summary, the CSV
-     (`chemical_aggregates`, `chemical_compositions`) and `ChemicalStructure`.
+     (`chemical_aggregates`, `chemical_appeared`, `chemical_disappeared`,
+     `chemical_fusions`, `chemical_scissions`, `chemical_compositions`) and
+     `ChemicalStructure`.
 - ✅ **10 elements** (H, He, C, N, O, Na, Si, P, S, Fe) with LJ parameters in
      `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
      Charges follow ionization trends (O −1, Na +1, Si +0.5, metals +1): a

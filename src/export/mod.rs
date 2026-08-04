@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::Path;
 
 /// Column header of the metrics CSV (one row per sampled tick).
-pub const CSV_HEADER: &str = "tick,time_s,entities,energy_total,energy_kinetic,energy_potential,energy_avg,temperature_avg,mean_speed,density,collisions,systems_run,fps,memory_kb,aggregates,largest,monomers,bound_pairs,bonded_pairs,bonds_formed,bond_lifetime_ticks,bond_energy,bond_species,chemical_aggregates,chemical_compositions";
+pub const CSV_HEADER: &str = "tick,time_s,entities,energy_total,energy_kinetic,energy_potential,energy_avg,temperature_avg,mean_speed,density,collisions,systems_run,fps,memory_kb,aggregates,largest,monomers,bound_pairs,bonded_pairs,bonds_formed,bond_lifetime_ticks,bond_energy,bond_species,chemical_aggregates,chemical_appeared,chemical_disappeared,chemical_fusions,chemical_scissions,chemical_compositions";
 
 /// Compact representation of the per-species bond matrix: the non-zero pairs
 /// sorted by count, e.g. `Si-O:12;Na-O:3` (`;` separates the entries so the
@@ -44,16 +44,15 @@ pub fn bond_species(matrix: &[f64]) -> String {
 }
 
 /// Compact representation of the bond-graph composition histogram, e.g.
-/// `Na-O:12;Na2-O:3` (stoichiometry:count, ordered by descending count; `;`
-/// separates the entries so the CSV cell never contains a comma). Empty when
-/// the chemical lens is off.
+/// `Na-O:12@-0.53;Na2-O:3@-0.71` (`;` separates entries, `@` marks the mean
+/// observed binding energy per aggregate). Empty when the chemical lens is off.
 pub fn chemical_compositions(s: &StatsSnapshot) -> String {
     s.chemical
         .as_ref()
         .map(|c| {
             c.compositions
                 .iter()
-                .map(|e| format!("{}:{}", e.formula, e.count))
+                .map(|e| format!("{}:{}@{:.2}", e.formula, e.count, e.mean_binding))
                 .collect::<Vec<_>>()
                 .join(";")
         })
@@ -67,8 +66,12 @@ pub fn csv_row(s: &StatsSnapshot) -> String {
         None => (0, 0, 0, 0),
     };
     let chemical_aggregates = s.chemical.as_ref().map(|c| c.aggregates).unwrap_or(0);
+    let appeared = s.chemical.as_ref().map(|c| c.appeared).unwrap_or(0);
+    let disappeared = s.chemical.as_ref().map(|c| c.disappeared).unwrap_or(0);
+    let fusions = s.chemical.as_ref().map(|c| c.fusions).unwrap_or(0);
+    let scissions = s.chemical.as_ref().map(|c| c.scissions).unwrap_or(0);
     format!(
-        "{},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.3},{:.1},{},{},{},{},{},{},{:.1},{:.6},{},{},{}",
+        "{},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{:.3},{:.1},{},{},{},{},{},{},{:.1},{:.6},{},{},{},{},{},{},{}",
         s.tick,
         s.time,
         s.entities,
@@ -93,6 +96,10 @@ pub fn csv_row(s: &StatsSnapshot) -> String {
         s.bond_energy,
         bond_species(&s.bond_matrix),
         chemical_aggregates,
+        appeared,
+        disappeared,
+        fusions,
+        scissions,
         chemical_compositions(s),
     )
 }
@@ -189,17 +196,20 @@ mod tests {
                 monomers: 1,
                 largest: 3,
                 compositions: vec![
-                    crate::stats::CompositionEntry { formula: "Na-O".into(), count: 2 },
-                    crate::stats::CompositionEntry { formula: "Na2-O".into(), count: 1 },
+                    crate::stats::CompositionEntry { formula: "Na-O".into(), count: 2, mean_binding: -0.53 },
+                    crate::stats::CompositionEntry { formula: "Na2-O".into(), count: 1, mean_binding: -0.71 },
                 ],
+                appeared: 2,
+                disappeared: 0,
+                fusions: 0,
+                scissions: 0,
             }),
         };
         assert_eq!(CSV_HEADER.split(',').count(), csv_row(&s).split(',').count());
         let row = csv_row(&s);
         assert!(row.starts_with("7,0.420000,3,"));
-        // Na–O (5,4) = 3 bonds → "Na-O:3" as the only non-zero species pair;
-        // chemical lens: 2 aggregates, histogram with Na-O:2 first (desc count).
-        assert!(row.ends_with("4,25.0,0.500000,Na-O:3,2,Na-O:2;Na2-O:1"));
+        // Na–O (5,4) = 3 bonds → "Na-O:3"; lifecycle: 2 appeared; binding included.
+        assert!(row.ends_with("Na-O:3,2,2,0,0,0,Na-O:2@-0.53;Na2-O:1@-0.71"));
     }
 
     #[test]

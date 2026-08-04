@@ -319,6 +319,11 @@ pub struct ChemicalComponent {
     pub composition: Vec<u32>,
     /// Human-readable stoichiometry, e.g. `Na2-O` or `C2-H6`.
     pub formula: String,
+    /// Member entity ids, sorted (the identity of the component across
+    /// samples).
+    pub members: Vec<u32>,
+    /// Deduplicated undirected bonds inside the component.
+    pub edges: Vec<(u32, u32)>,
 }
 
 /// Connected components of the persistent-bond graph (`Bonds` component).
@@ -359,23 +364,46 @@ pub fn bond_components(
         union(&mut parent, &mut rank, ia, ib);
     }
 
-    let mut sizes = vec![0usize; n];
-    let mut compositions: HashMap<usize, Vec<u32>> = HashMap::new();
-    for i in 0..n {
+    // Collect members, compositions and edges per component root.
+    struct CompData {
+        composition: Vec<u32>,
+        members: Vec<u32>,
+        edges: Vec<(u32, u32)>,
+    }
+    let mut comps: HashMap<usize, CompData> = HashMap::new();
+    for (i, &(entity, at)) in entities.iter().enumerate() {
         let root = find(&mut parent, i);
-        sizes[root] += 1;
-        let composition = compositions
+        let entry = comps
             .entry(root)
-            .or_insert_with(|| vec![0u32; AtomType::COUNT]);
-        composition[element_index(entities[i].1)] += 1;
+            .or_insert_with(|| CompData {
+                composition: vec![0u32; AtomType::COUNT],
+                members: Vec::new(),
+                edges: Vec::new(),
+            });
+        entry.members.push(entity);
+        entry.composition[element_index(at)] += 1;
+    }
+    for &(a, b) in &seen {
+        let Some(&ia) = index.get(&a) else {
+            continue;
+        };
+        let root = find(&mut parent, ia);
+        comps.get_mut(&root).unwrap().edges.push((a, b));
     }
 
-    let mut out: Vec<ChemicalComponent> = compositions
-        .into_iter()
-        .map(|(root, composition)| ChemicalComponent {
-            size: sizes[root],
-            formula: formula(&composition),
-            composition,
+    let mut out: Vec<ChemicalComponent> = comps
+        .into_values()
+        .map(|d| {
+            let formula = formula(&d.composition);
+            let mut members = d.members;
+            members.sort_unstable();
+            ChemicalComponent {
+                size: members.len(),
+                formula,
+                composition: d.composition,
+                members,
+                edges: d.edges,
+            }
         })
         .collect();
     out.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.formula.cmp(&b.formula)));

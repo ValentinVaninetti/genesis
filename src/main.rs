@@ -141,18 +141,22 @@ fn print_structure(universe: &Universe) {
     }
 
     // The "chemistry" lens: connected components of the observed persistent-
-    // bond graph, each labeled by its stoichiometry.
+    // bond graph, each labeled by its stoichiometry and binding energy.
     if let Some(chem) = universe.stats.snapshot().chemical.as_ref() {
         let formulas = chem
             .compositions
             .iter()
             .take(8)
-            .map(|e| format!("{}:{}", e.formula, e.count))
+            .map(|e| format!("{}:{}@{:.2}", e.formula, e.count, e.mean_binding))
             .collect::<Vec<_>>()
             .join(", ");
         println!(
             "    chemical (observed bond graph): {} aggregates | largest: {} | bonded: {} | monomers: {} | stoichiometries: {}",
             chem.aggregates, chem.largest, chem.bound_entities, chem.monomers, formulas
+        );
+        println!(
+            "    lifecycle (since last sample): +{} appeared, −{} disappeared, {} fusions, {} scissions",
+            chem.appeared, chem.disappeared, chem.fusions, chem.scissions
         );
     }
 }

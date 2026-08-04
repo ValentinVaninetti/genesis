@@ -40,13 +40,19 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
       conexa del grafo de bonds observados, etiquetada por estequiometría
       (`Na-O`, `Na2-O`, `C3`) + histograma de composiciones. La "molécula" se
       mide, nunca se programa.
+- [x] **Ciclo de vida de estequiometrías + energía de unión observada**
+      (`bond_structure.rs`): entre muestras, diff de componentes conexas →
+      aparición/desaparición, fusión (varias previas = una nueva) y escisión
+      (una previa = varias nuevas). Cada componente reporta su **mean_binding**
+      (`pair_potential_raw`: LJ + Coulomb + muelle evaluados a distancia
+      actual; negativo = ligado). Exportado a CSV y CLI.
 - [x] `energy_total = K + V + E_bond` (la energía incluye el muelle).
 - [x] Análisis escalable: g(r) con subsampleo determinista (`G_SAMPLE_CAP`),
       agregados friends-of-friends, snapshot de estructura.
 - [x] Exportaciones CSV/XYZ para análisis externo (OVITO/matplotlib).
 - [x] Persistencia binaria idéntica (save/reload bit-a-bit).
 - [x] 10 elementos (H, He, C, N, O, Na, Si, P, S, Fe), seeding por lista.
-- [x] Tests: 72/72 (`cargo test --lib`), clippy limpio.
+- [x] Tests: 73/73 (`cargo test --lib`), clippy limpio.
 - [x] Demos: `config/universe.toml` (100k), `config/demo-nacl.toml`
       (fusión iónica Na⁺/O⁻ observando bonds).
 
@@ -57,10 +63,10 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
 - [ ] **Ciclo de vida de especies** (stage 2): ¿puede un universo de *reglas*
       con selección de eventos raros producir organismos? Primero: métricas de
       complejidad medibles (qué observar) antes de programar nada.
-- [ ] **Reacciones observadas** (no programadas): usar la lente química para
-      seguir el *ciclo de vida* de una estequiometría — aparición, fusión,
-      escisión, desaparición — y su energía de formación observada; sin jamás
-      decir "esto es una molécula".
+- [ ] **Reacciones observadas (siguiente paso)**: usar las series temporales de
+      estequiometrías para reconstruir "reacciones" observadas (A → B+C, A+B→C,
+      etc.) a partir de los deltas de ciclo de vida, sin jamás decir "esto es
+      una molécula" ni programar una regla de especie.
 - [ ] **Química emergente vía tabla de porosidad/afinidad**: variar σ, ε y
       carga por especie para poblar el espacio de "materiales" que el universo
       puede formar espontáneamente.
