@@ -19,10 +19,13 @@ use crate::physics::grid::Particle;
 use crate::rng::Rng;
 use crate::scheduler::{Scheduler, SystemContext};
 use crate::serialization::{load_universe, save_universe, LoadError, SaveError, UniverseState};
-use crate::stats::{BondEnergy, CollisionCounter, PotentialEnergy, StatsCollector, StructureStats};
+use crate::stats::{
+    BondEnergy, ChemicalStructure, CollisionCounter, PotentialEnergy, StatsCollector, StructureStats,
+};
 use crate::systems::{
-    BondObservationSystem, BoundarySystem, CollisionSystem, ForceSystem, MovementSystem,
-    PositionDrift, StatsSystem, StructureSystem, ThermostatSystem, VelocityHalfKick,
+    BondObservationSystem, BondStructureSystem, BoundarySystem, CollisionSystem, ForceSystem,
+    MovementSystem, PositionDrift, StatsSystem, StructureSystem, ThermostatSystem,
+    VelocityHalfKick,
 };
 use std::fmt;
 use std::path::Path;
@@ -64,6 +67,7 @@ impl Universe {
             bound_pairs: 0,
         });
         resources.insert(crate::stats::BondObservation::default());
+        resources.insert(ChemicalStructure::default());
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -100,6 +104,7 @@ impl Universe {
             bound_pairs: 0,
         });
         resources.insert(crate::stats::BondObservation::default());
+        resources.insert(ChemicalStructure::default());
 
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
@@ -362,6 +367,7 @@ fn build_schedule(scheduler: &mut Scheduler, cfg: &Config) {
     if cfg.systems.enable_forces {
         if cfg.systems.enable_bond_observation {
             scheduler.add_system(BondObservationSystem::new(cfg));
+            scheduler.add_system(BondStructureSystem::new(cfg.stats.structure_interval));
         }
         scheduler.add_system(StructureSystem::new(cfg.stats.structure_interval));
     }

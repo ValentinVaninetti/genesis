@@ -71,6 +71,15 @@ architecture decisions of stage 0 (the foundation).
      energy is the exact derivative of its switched potential (verified), so
      NVE stays conserved with bonds on. Bonds are still never programmed: only
      pairs that observation already declared persistent feel the spring.
+- ✅ **Chemical aggregates by composition** (`BondStructureSystem`, emergent):
+     the **"chemistry" lens**. Instead of spatial proximity (friends-of-friends
+     of `StructureSystem`) it takes the **persistent-bond graph** written by the
+     bond observation and measures its connected components; each component is
+     labeled with its **stoichiometry** (e.g. `Na-O`, `Na2-O`, `C3`). The
+     snapshot reports the number of aggregates, largest, bonded/monomer counts
+     and a composition histogram — the structures the physics produced, never
+     programmed per species. Reported in the CLI summary, the CSV
+     (`chemical_aggregates`, `chemical_compositions`) and `ChemicalStructure`.
 - ✅ **10 elements** (H, He, C, N, O, Na, Si, P, S, Fe) with LJ parameters in
      `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
      Charges follow ionization trends (O −1, Na +1, Si +0.5, metals +1): a

@@ -36,13 +36,17 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
 - [x] **Interacción de bonds observados** (`forces.rs`): muelle armónico hacia
       el mínimo del pozo LJ (k = curvatura del pozo), con guard de radio y
       clamp del switch (bug real corregido: r > r_c explotaba el switch).
+- [x] **Agregados químicos por composición** (`bond_structure.rs`): componente
+      conexa del grafo de bonds observados, etiquetada por estequiometría
+      (`Na-O`, `Na2-O`, `C3`) + histograma de composiciones. La "molécula" se
+      mide, nunca se programa.
 - [x] `energy_total = K + V + E_bond` (la energía incluye el muelle).
 - [x] Análisis escalable: g(r) con subsampleo determinista (`G_SAMPLE_CAP`),
       agregados friends-of-friends, snapshot de estructura.
 - [x] Exportaciones CSV/XYZ para análisis externo (OVITO/matplotlib).
 - [x] Persistencia binaria idéntica (save/reload bit-a-bit).
 - [x] 10 elementos (H, He, C, N, O, Na, Si, P, S, Fe), seeding por lista.
-- [x] Tests: 64/64 (`cargo test --lib`), clippy limpio.
+- [x] Tests: 72/72 (`cargo test --lib`), clippy limpio.
 - [x] Demos: `config/universe.toml` (100k), `config/demo-nacl.toml`
       (fusión iónica Na⁺/O⁻ observando bonds).
 
@@ -53,10 +57,10 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
 - [ ] **Ciclo de vida de especies** (stage 2): ¿puede un universo de *reglas*
       con selección de eventos raros producir organismos? Primero: métricas de
       complejidad medibles (qué observar) antes de programar nada.
-- [ ] **Reacciones observadas** (no programadas): si dos especies mantienen un
-      bond persistente bajo perturbación, medir *agregados químicos* (dimers,
-      trimers, clusters) por composición — sin jamás decir "esto es una
-      molécula".
+- [ ] **Reacciones observadas** (no programadas): usar la lente química para
+      seguir el *ciclo de vida* de una estequiometría — aparición, fusión,
+      escisión, desaparición — y su energía de formación observada; sin jamás
+      decir "esto es una molécula".
 - [ ] **Química emergente vía tabla de porosidad/afinidad**: variar σ, ε y
       carga por especie para poblar el espacio de "materiales" que el universo
       puede formar espontáneamente.

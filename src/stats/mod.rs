@@ -68,6 +68,42 @@ pub struct StatsSnapshot {
     /// the last bond observation.
     #[serde(default)]
     pub bond_matrix: Vec<f64>,
+    /// Connected components of the persistent-bond graph measured at the last
+    /// structure sampling, with their stoichiometries (None when the bond
+    /// observation or the sampling is off). The "chemistry" lens.
+    #[serde(default)]
+    pub chemical: Option<ChemicalStructure>,
+}
+
+/// One stoichiometry observed in the bond-graph components, with how many
+/// components have it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompositionEntry {
+    /// e.g. `Na-O`, `Na2-O`.
+    pub formula: String,
+    /// Number of components with exactly this composition.
+    pub count: u64,
+}
+
+/// Connected components of the persistent-bond graph, measured like
+/// `StructureStats` but with the "chemistry" lens: components of the graph of
+/// *observed* bonds (not spatial proximity), each labeled by stoichiometry.
+/// Observation, not a law.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChemicalStructure {
+    /// Tick in which it was measured.
+    pub tick: u64,
+    /// Components with ≥ 2 entities (the "molecules" the physics produced).
+    pub aggregates: usize,
+    /// Entities with at least one persistent bond.
+    pub bound_entities: usize,
+    /// Entities without any persistent bond.
+    pub monomers: usize,
+    /// Size of the largest component.
+    pub largest: usize,
+    /// Composition histogram: stoichiometry → number of components, ordered by
+    /// descending count.
+    pub compositions: Vec<CompositionEntry>,
 }
 
 /// Metrics collector with history.
@@ -105,6 +141,7 @@ impl StatsCollector {
                 bond_lifetime_ticks: 0.0,
                 bond_energy: 0.0,
                 bond_matrix: Vec::new(),
+                chemical: None,
             },
             systems_run: 0,
             fps: 0.0,

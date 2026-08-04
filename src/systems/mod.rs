@@ -6,6 +6,7 @@
 
 pub mod aggregate;
 pub mod bonds;
+pub mod bond_structure;
 pub mod boundary;
 pub mod collisions;
 pub mod forces;
@@ -16,6 +17,7 @@ pub mod thermostat;
 
 pub use aggregate::StatsSystem;
 pub use bonds::BondObservationSystem;
+pub use bond_structure::BondStructureSystem;
 pub use boundary::BoundarySystem;
 pub use collisions::CollisionSystem;
 pub use forces::ForceSystem;

@@ -8,8 +8,9 @@
 
 use crate::components::AtomType;
 use crate::math::Vec3;
-use crate::physics::forces::sigma;
+use crate::physics::forces::{element_index, sigma};
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
+use std::collections::{HashMap, HashSet};
 
 pub mod pairs;
 
@@ -304,6 +305,106 @@ fn find(parent: &mut [usize], mut x: usize) -> usize {
     x
 }
 
+/// One connected component of the persistent-bond graph, labeled by its
+/// species composition (count per element). This is the "chemistry" lens:
+/// a bond exists only because the observation measured a persistent pair, so
+/// a multi-body component here means the physics produced a stable structure
+/// with a definite stoichiometry — never programmed per species.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChemicalComponent {
+    /// Entities in the component.
+    pub size: usize,
+    /// Count of each element (index = `element_index`), `AtomType::COUNT`
+    /// entries.
+    pub composition: Vec<u32>,
+    /// Human-readable stoichiometry, e.g. `Na2-O` or `C2-H6`.
+    pub formula: String,
+}
+
+/// Connected components of the persistent-bond graph (`Bonds` component).
+///
+/// `entities` are the bonded entities as `(index, element)` and `neighbors`
+/// the undirected edges of the graph. Isolated entities (monomers) are not
+/// part of this graph and are counted by the caller. Edges are deduplicated
+/// here and references to unknown entities are ignored. Components are
+/// returned sorted by size (largest first).
+pub fn bond_components(
+    entities: &[(u32, AtomType)],
+    neighbors: &[(u32, u32)],
+) -> Vec<ChemicalComponent> {
+    let n = entities.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let index: HashMap<u32, usize> = entities
+        .iter()
+        .enumerate()
+        .map(|(i, (e, _))| (*e, i))
+        .collect();
+
+    let mut parent: Vec<usize> = (0..n).collect();
+    let mut rank = vec![0u32; n];
+    let mut seen: HashSet<(u32, u32)> = HashSet::with_capacity(neighbors.len());
+    for &(a, b) in neighbors {
+        let (Some(&ia), Some(&ib)) = (index.get(&a), index.get(&b)) else {
+            continue;
+        };
+        if ia == ib {
+            continue;
+        }
+        let edge = (a.min(b), a.max(b));
+        if !seen.insert(edge) {
+            continue;
+        }
+        union(&mut parent, &mut rank, ia, ib);
+    }
+
+    let mut sizes = vec![0usize; n];
+    let mut compositions: HashMap<usize, Vec<u32>> = HashMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        sizes[root] += 1;
+        let composition = compositions
+            .entry(root)
+            .or_insert_with(|| vec![0u32; AtomType::COUNT]);
+        composition[element_index(entities[i].1)] += 1;
+    }
+
+    let mut out: Vec<ChemicalComponent> = compositions
+        .into_iter()
+        .map(|(root, composition)| ChemicalComponent {
+            size: sizes[root],
+            formula: formula(&composition),
+            composition,
+        })
+        .collect();
+    out.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.formula.cmp(&b.formula)));
+    out
+}
+
+/// Stoichiometric formula of a composition vector, e.g. `Na2-O` or `C2-H6`:
+/// element symbols ordered by descending multiplicity (then alphabetically),
+/// `-` separated, the multiplicity shown only when > 1.
+pub fn formula(composition: &[u32]) -> String {
+    let mut parts: Vec<(u32, AtomType)> = composition
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &c)| (c > 0).then_some((c, AtomType::ALL[i])))
+        .collect();
+    parts.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.symbol().cmp(y.1.symbol())));
+    parts
+        .iter()
+        .map(|(c, t)| {
+            if *c > 1 {
+                format!("{}{}", t.symbol(), c)
+            } else {
+                t.symbol().to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,5 +554,99 @@ mod tests {
         assert_eq!(s.monomers, 2);
         assert_eq!(s.aggregates, 0);
         assert_eq!(s.bound_pairs, 0);
+    }
+
+    #[test]
+    fn bond_components_finds_dimers_and_their_compositions() {
+        // Two isolated dimers: H–H and Na–O → two components, each size 2,
+        // with the correct stoichiometry.
+        let entities = [
+            (0u32, AtomType::Hydrogen),
+            (1, AtomType::Hydrogen),
+            (2, AtomType::Sodium),
+            (3, AtomType::Oxygen),
+        ];
+        let edges = [(0, 1), (2, 3)];
+        let comps = bond_components(&entities, &edges);
+        assert_eq!(comps.len(), 2, "one component per dimer");
+        assert!(comps.iter().all(|c| c.size == 2));
+        assert_eq!(comps[0].formula, "H2");
+        assert_eq!(comps[1].formula, "Na-O");
+        assert_eq!(formula(&comps[0].composition), "H2");
+    }
+
+    #[test]
+    fn bond_components_chain_has_stoichiometry() {
+        // Na–O–Na → one component of size 3 with composition Na2-O.
+        let entities = [
+            (0u32, AtomType::Sodium),
+            (1, AtomType::Oxygen),
+            (2, AtomType::Sodium),
+        ];
+        let edges = [(0, 1), (1, 2)];
+        let comps = bond_components(&entities, &edges);
+        assert_eq!(comps.len(), 1);
+        assert_eq!(comps[0].size, 3);
+        assert_eq!(comps[0].formula, "Na2-O");
+    }
+
+    #[test]
+    fn bond_components_ignores_duplicates_and_dangling_edges() {
+        // Duplicate edge (0,1) twice and a dangling edge to an unknown
+        // entity → still a single dimer H2.
+        let entities = [
+            (0u32, AtomType::Hydrogen),
+            (1, AtomType::Hydrogen),
+        ];
+        let edges = [(0, 1), (1, 0), (7, 0), (9, 9)];
+        let comps = bond_components(&entities, &edges);
+        assert_eq!(comps.len(), 1);
+        assert_eq!(comps[0].formula, "H2");
+        assert_eq!(comps[0].size, 2);
+    }
+
+    #[test]
+    fn bond_components_cycle_is_one_component() {
+        // A C–C–C triangle is one component of size 3 with formula C3.
+        let entities = [
+            (0u32, AtomType::Carbon),
+            (1, AtomType::Carbon),
+            (2, AtomType::Carbon),
+        ];
+        let edges = [(0, 1), (1, 2), (2, 0)];
+        let comps = bond_components(&entities, &edges);
+        assert_eq!(comps.len(), 1);
+        assert_eq!(comps[0].size, 3);
+        assert_eq!(comps[0].formula, "C3");
+    }
+
+    #[test]
+    fn bond_components_empty_graph_is_empty() {
+        assert!(bond_components(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn formula_orders_multiplicity_then_symbol() {
+        // C2H6 (formula "H6-C2"): 6 H and 2 C → descending count puts H first
+        // even though C < H alphabetically.
+        let composition = {
+            let mut c = vec![0u32; AtomType::COUNT];
+            c[element_index(AtomType::Hydrogen)] = 6;
+            c[element_index(AtomType::Carbon)] = 2;
+            c
+        };
+        assert_eq!(formula(&composition), "H6-C2");
+    }
+
+    #[test]
+    fn formula_mixed_stoichiometry() {
+        // Na2-O and a hypothetical Fe-S2 → count-desc, symbol-asc.
+        let na2o = {
+            let mut c = vec![0u32; AtomType::COUNT];
+            c[element_index(AtomType::Sodium)] = 2;
+            c[element_index(AtomType::Oxygen)] = 1;
+            c
+        };
+        assert_eq!(formula(&na2o), "Na2-O");
     }
 }

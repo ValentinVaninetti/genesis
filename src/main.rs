@@ -139,6 +139,22 @@ fn print_structure(universe: &Universe) {
         ),
         None => println!("    g(r): no peaks (empty system)"),
     }
+
+    // The "chemistry" lens: connected components of the observed persistent-
+    // bond graph, each labeled by its stoichiometry.
+    if let Some(chem) = universe.stats.snapshot().chemical.as_ref() {
+        let formulas = chem
+            .compositions
+            .iter()
+            .take(8)
+            .map(|e| format!("{}:{}", e.formula, e.count))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!(
+            "    chemical (observed bond graph): {} aggregates | largest: {} | bonded: {} | monomers: {} | stoichiometries: {}",
+            chem.aggregates, chem.largest, chem.bound_entities, chem.monomers, formulas
+        );
+    }
 }
 
 /// Prints the speed histogram as ASCII bars.
