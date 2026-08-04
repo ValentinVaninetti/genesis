@@ -51,13 +51,18 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
       (`Na-O + Na-O → Na2-O2`), deduplicada y contada por intervalo. Sin
       programar ninguna regla de especie: es solo el diff del grafo de bonds
       observados. Columna `chemical_reactions` en CSV y línea en el CLI.
+- [x] **Tabla de afinidad** (`[physics.elements]`): overrides de σ, ε y carga
+      por elemento sobre la tabla built-in. `ElementTable` se resuelve una vez
+      en `Universe` y alimenta todas las leyes y lentes (fuerzas LJ, umbral y
+      persistencia de bonds, binding, agregados, seeding de carga). Un símbolo
+      desconocido falla en carga. Overrides parciales conservan el default.
 - [x] `energy_total = K + V + E_bond` (la energía incluye el muelle).
 - [x] Análisis escalable: g(r) con subsampleo determinista (`G_SAMPLE_CAP`),
       agregados friends-of-friends, snapshot de estructura.
 - [x] Exportaciones CSV/XYZ para análisis externo (OVITO/matplotlib).
 - [x] Persistencia binaria idéntica (save/reload bit-a-bit).
 - [x] 10 elementos (H, He, C, N, O, Na, Si, P, S, Fe), seeding por lista.
-- [x] Tests: 74/74 (`cargo test --lib`), clippy limpio.
+- [x] Tests: 80/80 (`cargo test --lib`), clippy limpio.
 - [x] Demos: `config/universe.toml` (100k), `config/demo-nacl.toml`
       (fusión iónica Na⁺/O⁻ observando bonds).
 
@@ -68,9 +73,9 @@ observación lo midió — nunca porque "el Na y el O forman NaCl".
 - [ ] **Ciclo de vida de especies** (stage 2): ¿puede un universo de *reglas*
       con selección de eventos raros producir organismos? Primero: métricas de
       complejidad medibles (qué observar) antes de programar nada.
-- [ ] **Química emergente vía tabla de porosidad/afinidad**: variar σ, ε y
-      carga por especie para poblar el espacio de "materiales" que el universo
-      puede formar espontáneamente.
+- [ ] **Barrido de tablas de afinidad**: con la tabla configurable ya se puede
+      poblar el espacio de "materiales" — script/ejemplo que barra σ/ε/carga
+      por especie y mida qué estequiometrías emergen en cada región.
 - [ ] **Selección de eventos raros** (replicadores): definir un *evento de
       copia* como ley física de bajo costo energético y ver si alguna
       configuración se auto-sostiene. Es la frontera donde "lo que es ley" vs

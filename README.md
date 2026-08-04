@@ -93,6 +93,15 @@ architecture decisions of stage 0 (the foundation).
      `src/physics/forces.rs`, mass and symbols in `src/components/atom_type.rs`.
      Charges follow ionization trends (O −1, Na +1, Si +0.5, metals +1): a
      `config/demo-nacl.toml` composes Na⁺/O⁻ to observe ionic aggregates.
+- ✅ **Affinity table** (`[physics.elements]`): per-element σ, ε (kelvin) and
+     charge overrides on top of the built-in table. This is the knob that
+     tunes what "materials" the universe can form — deep-ε species stick to
+     themselves, charged ones bind electrostatically, large-σ ones reach
+     further — without adding a single species rule. The resolved table
+     (`ElementTable`) is built once in `Universe` and drives every law and
+     lens: LJ forces, bond observation (per-pair σ and persistence), binding
+     energy, cluster analysis and charge seeding. Partial overrides keep the
+     default for unmentioned fields; an unknown symbol fails at config load.
 - ✅ **Observability exports** (`src/export/`): metrics CSV (`[stats].csv_path`,
      appended every `csv_interval` ticks) and position frames in XYZ
      (`[stats].xyz_prefix`, one `frame_{tick:08}.xyz` per `xyz_interval` ticks)

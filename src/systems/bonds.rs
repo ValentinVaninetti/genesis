@@ -16,7 +16,7 @@ use crate::analysis::pairs::{bind_cutoff, bound_pairs_with_grid, BoundPair, Pair
 use crate::components::{AtomType, Bonds, Position};
 use crate::config::Config;
 use crate::ecs::EntityId;
-use crate::physics::forces::{element_index, mix_epsilon, mix_sigma, vib_period};
+use crate::physics::forces::{element_index, vib_period, ElementTable};
 use crate::physics::grid::SpatialGrid;
 use crate::scheduler::{Access, System, SystemContext};
 use crate::stats::BondObservation;
@@ -35,17 +35,23 @@ pub struct BondObservationSystem {
     /// Persistent pairs currently active, with the tick they first reached the
     /// persistence threshold (to measure bond lifetimes).
     active_since: HashMap<BoundPair, u64>,
+    elements: ElementTable,
 }
 
 impl BondObservationSystem {
     pub fn new(cfg: &Config) -> Self {
+        let mut elements = ElementTable::default_table();
+        if let Err(sym) = elements.apply_overrides(&cfg.physics.elements) {
+            panic!("[genesis] invalid affinity table: {sym}");
+        }
         Self {
-            grid: SpatialGrid::new(cfg.universe.size, bind_cutoff(cfg.stats.bond_k_bind)),
+            grid: SpatialGrid::new(cfg.universe.size, bind_cutoff(&elements, cfg.stats.bond_k_bind)),
             k_bind: cfg.stats.bond_k_bind,
             min_periods: cfg.stats.bond_min_periods.max(0.1),
             tracker: PairTracker::new(DEBOUNCE),
             bound: Vec::new(),
             active_since: HashMap::new(),
+            elements,
         }
     }
 }
@@ -78,6 +84,7 @@ impl System for BondObservationSystem {
             world_size,
             self.k_bind,
             &mut self.grid,
+            &self.elements,
         ));
         self.tracker.track_tick(&self.bound);
 
@@ -86,8 +93,8 @@ impl System for BondObservationSystem {
         // vibrational period.
         let threshold_ticks = |a: AtomType, b: AtomType| -> u64 {
             let mu = a.mass() * b.mass() / (a.mass() + b.mass());
-            let eps = mix_epsilon(cfg.physics.thermal_constant, a, b);
-            let sig = mix_sigma(a, b);
+            let eps = self.elements.mix_epsilon(cfg.physics.thermal_constant, a, b);
+            let sig = self.elements.mix_sigma(a, b);
             (self.min_periods * vib_period(eps, sig, mu) / dt).ceil() as u64
         };
         let mut persistent: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
@@ -211,7 +218,8 @@ mod tests {
         let mut sys = BondObservationSystem::new(&cfg);
 
         // C–C at 2.0 < 1.5·1.9 = 2.85 is bound.
-        let mut bound = bound_pairs_with_grid(&world, size, sys.k_bind, &mut sys.grid);
+        let mut bound =
+            bound_pairs_with_grid(&world, size, sys.k_bind, &mut sys.grid, &sys.elements);
         assert!(!bound.is_empty());
         let mut tracker = PairTracker::new(DEBOUNCE);
         for _ in 0..50 {
@@ -233,10 +241,11 @@ mod tests {
         let dt = cfg.universe.dt;
         let min = cfg.stats.bond_min_periods;
         let threshold = |a: AtomType, b: AtomType| {
+            let elements = ElementTable::default_table();
             (min
                 * vib_period(
-                    mix_epsilon(cfg.physics.thermal_constant, a, b),
-                    mix_sigma(a, b),
+                    elements.mix_epsilon(cfg.physics.thermal_constant, a, b),
+                    elements.mix_sigma(a, b),
                     a.mass() * b.mass() / (a.mass() + b.mass()),
                 )
                 / dt)
@@ -262,9 +271,9 @@ mod tests {
         let cfg = Config::default_config();
         let dt = cfg.universe.dt;
         let min = cfg.stats.bond_min_periods;
-        let eps =
-            mix_epsilon(cfg.physics.thermal_constant, AtomType::Hydrogen, AtomType::Hydrogen);
-        let sig = mix_sigma(AtomType::Hydrogen, AtomType::Hydrogen);
+        let eps = ElementTable::default_table()
+            .mix_epsilon(cfg.physics.thermal_constant, AtomType::Hydrogen, AtomType::Hydrogen);
+        let sig = ElementTable::default_table().mix_sigma(AtomType::Hydrogen, AtomType::Hydrogen);
         let mu = AtomType::Hydrogen.mass() / 2.0;
         let threshold = (min * vib_period(eps, sig, mu) / dt).ceil() as u64;
 

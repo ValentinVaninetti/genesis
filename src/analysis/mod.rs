@@ -8,7 +8,7 @@
 
 use crate::components::AtomType;
 use crate::math::Vec3;
-use crate::physics::forces::{element_index, sigma};
+use crate::physics::forces::{element_index, ElementTable};
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
 use std::collections::{HashMap, HashSet};
 
@@ -223,6 +223,7 @@ pub fn clusters(
     types: &[AtomType],
     world_size: Vec3,
     bond_factor: f64,
+    elements: &ElementTable,
 ) -> ClusterStats {
     let empty = ClusterStats::default();
     let n = particles.len();
@@ -232,7 +233,7 @@ pub fn clusters(
     debug_assert_eq!(particles.len(), types.len());
 
     // Sigma of each particle and maximum sigma (grid cutoff: superset).
-    let sigmas: Vec<f64> = types.iter().map(|&t| sigma(t)).collect();
+    let sigmas: Vec<f64> = types.iter().map(|&t| elements.sigma(t)).collect();
     let max_sigma = sigmas.iter().copied().fold(0.0, f64::max);
     let cutoff = (bond_factor.max(0.1) * max_sigma).max(1e-9);
 
@@ -557,7 +558,7 @@ mod tests {
         ];
         let types: Vec<AtomType> = data.iter().map(|(_, t)| *t).collect();
         let particles: Vec<Particle> = data.iter().map(|(p, _)| *p).collect();
-        let s = clusters(&particles, &types, world, BOND_FACTOR);
+        let s = clusters(&particles, &types, world, BOND_FACTOR, &ElementTable::default_table());
         assert_eq!(s.aggregates, 2);
         assert_eq!(s.monomers, 2);
         assert_eq!(s.largest, 2);
@@ -568,7 +569,7 @@ mod tests {
     #[test]
     fn clusters_empty_and_isolated() {
         let world = Vec3::new(64.0, 64.0, 64.0);
-        let empty = clusters(&[], &[], world, BOND_FACTOR);
+        let empty = clusters(&[], &[], world, BOND_FACTOR, &ElementTable::default_table());
         assert_eq!(empty.largest, 0);
         assert_eq!(empty.mean_size, 0.0);
 
@@ -578,7 +579,7 @@ mod tests {
         ];
         let types: Vec<AtomType> = data.iter().map(|(_, t)| *t).collect();
         let particles: Vec<Particle> = data.iter().map(|(p, _)| *p).collect();
-        let s = clusters(&particles, &types, world, BOND_FACTOR);
+        let s = clusters(&particles, &types, world, BOND_FACTOR, &ElementTable::default_table());
         assert_eq!(s.monomers, 2);
         assert_eq!(s.aggregates, 0);
         assert_eq!(s.bound_pairs, 0);

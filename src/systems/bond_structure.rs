@@ -16,7 +16,7 @@ use crate::analysis::bond_components;
 use crate::components::{AtomType, Bonds, Position};
 use crate::config::Config;
 use crate::math::Vec3;
-use crate::physics::forces::pair_potential_raw;
+use crate::physics::forces::{pair_potential_raw, ElementTable};
 use crate::physics::grid::min_image;
 use crate::scheduler::{Access, System, SystemContext};
 use crate::stats::{ChemicalStructure, CompositionEntry, Reaction};
@@ -88,6 +88,11 @@ impl System for BondStructureSystem {
         let k_e = cfg.physics.coulomb_constant;
         let with_coulomb = cfg.systems.enable_electrostatics;
         let with_bond = cfg.systems.enable_bond_interaction;
+        let mut elements = ElementTable::default_table();
+        if let Err(sym) = elements.apply_overrides(&cfg.physics.elements) {
+            eprintln!("[genesis] invalid affinity table: {sym}");
+            return;
+        }
 
         // 2. Per-component binding energy and per-formula aggregation.
         let mut formula_binding_sum: HashMap<String, (f64, u64)> = HashMap::new();
@@ -107,7 +112,7 @@ impl System for BondStructureSystem {
                         return 0.0;
                     };
                     let r = min_image(pa - pb, size).length().max(1e-9);
-                    pair_potential_raw(tc, ta, tb, r, k_e, with_coulomb, with_bond)
+                    pair_potential_raw(&elements, tc, ta, tb, r, k_e, with_coulomb, with_bond)
                 })
                 .sum();
             let entry = formula_binding_sum
@@ -250,10 +255,12 @@ mod tests {
     use super::*;
     use crate::components::{register_all, Mass, Velocity};
     use crate::ecs::{Resources, World};
+    use crate::physics::forces::ElementOverride;
     use crate::rng::Rng;
     use crate::scheduler::SystemContext;
     use crate::stats::StatsCollector;
     use crate::universe::Time;
+    use std::collections::HashMap;
 
     fn two_dimers_and_monomer() -> World {
         register_all();
@@ -372,6 +379,59 @@ mod tests {
             "Na-O binding must be negative (attractive): {}",
             na_o.mean_binding
         );
+    }
+
+    #[test]
+    fn affinity_table_tunes_binding_energy() {
+        // Na–O at 2.0 with electrostatics: LJ + Coulomb attract. Neutralizing
+        // both species through the affinity table removes the Coulomb term, so
+        // the pair becomes less bound — the table tunes "materials".
+        let (tc, k_e) = (0.01, 1.0);
+        let (with_coulomb, with_bond) = (true, false);
+        let r = 2.0;
+
+        let default = ElementTable::default_table();
+        let v_with_charge = pair_potential_raw(
+            &default,
+            tc,
+            AtomType::Sodium,
+            AtomType::Oxygen,
+            r,
+            k_e,
+            with_coulomb,
+            with_bond,
+        );
+
+        let mut neutral = ElementTable::default_table();
+        let mut overrides = HashMap::new();
+        for (sym, chg) in [("Na", 0.0), ("O", 0.0)] {
+            overrides.insert(
+                sym.to_string(),
+                ElementOverride {
+                    sigma: None,
+                    epsilon_k: None,
+                    charge: Some(chg),
+                },
+            );
+        }
+        neutral.apply_overrides(&overrides).unwrap();
+        let v_neutral = pair_potential_raw(
+            &neutral,
+            tc,
+            AtomType::Sodium,
+            AtomType::Oxygen,
+            r,
+            k_e,
+            with_coulomb,
+            with_bond,
+        );
+
+        assert!(
+            v_with_charge < v_neutral,
+            "Coulomb attraction deepens the well: charged {v_with_charge} vs neutral {v_neutral}"
+        );
+        // The neutral LJ term alone is still attractive at r=2.0.
+        assert!(v_neutral < 0.0);
     }
 
     #[test]

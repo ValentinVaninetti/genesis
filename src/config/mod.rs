@@ -6,7 +6,9 @@
 //! values.
 
 use crate::math::Vec3;
+use crate::physics::forces::ElementOverride;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Root configuration.
@@ -84,6 +86,13 @@ pub struct PhysicsConfig {
     /// Thermostat relaxation time (in ticks).
     #[serde(default = "default_thermostat_tau")]
     pub thermostat_tau: f64,
+    /// Affinity table overrides (σ, ε, charge) per element symbol. This is the
+    /// knob to tune what "materials" the universe can form: a deep-ε element
+    /// sticks to itself, a charged one binds electrostatically, a large-σ one
+    /// reaches further. Keys are element symbols (`Na`, `O`, ...); missing
+    /// fields keep the built-in default.
+    #[serde(default)]
+    pub elements: HashMap<String, ElementOverride>,
 }
 
 const fn default_particle_radius() -> f64 {
@@ -243,6 +252,7 @@ impl Config {
                 gravity_cutoff: 3.0,
                 thermostat_temperature: 300.0,
                 thermostat_tau: 20.0,
+                elements: HashMap::new(),
             },
             systems: SystemsConfig::default(),
             stats: StatsConfig::default(),
@@ -257,7 +267,22 @@ impl Config {
 
     /// Parses configuration from TOML text.
     pub fn from_toml(text: &str) -> Result<Self, ConfigError> {
-        Ok(toml::from_str(text)?)
+        let c: Self = toml::from_str(text)?;
+        c.validate()?;
+        Ok(c)
+    }
+
+    /// Semantic validation: fails fast on values that would silently do nothing
+    /// (e.g. an affinity-table key for an unknown element symbol).
+    fn validate(&self) -> Result<(), ConfigError> {
+        for symbol in self.physics.elements.keys() {
+            if crate::components::AtomType::by_name(symbol).is_none() {
+                return Err(ConfigError::Validation(format!(
+                    "affinity table references unknown element symbol `{symbol}`"
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Tries to load the file; if it does not exist, uses the default and
@@ -296,6 +321,7 @@ impl Config {
 pub enum ConfigError {
     Io(std::io::Error),
     Parse(toml::de::Error),
+    Validation(String),
 }
 
 impl From<std::io::Error> for ConfigError {
@@ -315,6 +341,7 @@ impl std::fmt::Display for ConfigError {
         match self {
             ConfigError::Io(e) => write!(f, "I/O error: {e}"),
             ConfigError::Parse(e) => write!(f, "invalid TOML: {e}"),
+            ConfigError::Validation(msg) => write!(f, "invalid configuration: {msg}"),
         }
     }
 }
@@ -366,6 +393,13 @@ gravity_cutoff = 3.0
 # Thermostat target temperature (kelvin) and relaxation time (ticks).
 thermostat_temperature = 300.0
 thermostat_tau = 20.0
+# Affinity table: per-element overrides of σ, ε (kelvin) and charge. This is
+# the knob that tunes what "materials" the universe can form: deep-ε elements
+# stick to themselves, charged ones bind electrostatically, large-σ ones reach
+# further. Missing fields keep the built-in default.
+# [physics.elements]
+# Na = { sigma = 2.2, epsilon_k = 130.0, charge = 1.0 }
+# O = { charge = -1.0 }
 
 [systems]
 enable_movement = true
@@ -498,5 +532,75 @@ mod tests {
         assert!(c.systems.enable_bond_interaction);
         assert_eq!(c.physics.coulomb_constant, 1.0);
         assert_eq!(c.stats.bond_min_periods, 10.0);
+    }
+
+    #[test]
+    fn affinity_table_parses_and_roundtrips() {
+        let text = r#"
+            [universe]
+            name = "t"
+            size = { x = 10.0, y = 10.0, z = 10.0 }
+            dt = 0.02
+            initial_atoms = 100
+            stats_history = 256
+
+            [rng]
+            seed = 1
+
+            [physics]
+            initial_temperature = 300.0
+            speed_limit = 1000.0
+            gravity_constant = 6.674e-11
+
+            [physics.elements]
+            Na = { sigma = 2.2, epsilon_k = 130.0, charge = 1.0 }
+            O = { charge = -2.0 }
+
+            [systems]
+            enable_electrostatics = true
+        "#;
+        let c = Config::from_toml(text).expect("affinity table is valid");
+        let na = c.physics.elements.get("Na").expect("Na override parsed");
+        assert_eq!(na.sigma, Some(2.2));
+        assert_eq!(na.epsilon_k, Some(130.0));
+        assert_eq!(na.charge, Some(1.0));
+        // Partial overrides stay partial.
+        let o = c.physics.elements.get("O").expect("O override parsed");
+        assert_eq!(o.sigma, None);
+        assert_eq!(o.charge, Some(-2.0));
+        // And the round trip preserves them.
+        let reparsed = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(reparsed.physics.elements["Na"].charge, Some(1.0));
+    }
+
+    #[test]
+    fn affinity_table_with_unknown_symbol_is_rejected() {
+        let text = r#"
+            [universe]
+            name = "t"
+            size = { x = 10.0, y = 10.0, z = 10.0 }
+            dt = 0.02
+            initial_atoms = 100
+            stats_history = 256
+
+            [rng]
+            seed = 1
+
+            [physics]
+            initial_temperature = 300.0
+            speed_limit = 1000.0
+            gravity_constant = 6.674e-11
+
+            [physics.elements]
+            Faux = { charge = -2.0 }
+
+            [systems]
+            enable_electrostatics = true
+        "#;
+        let err = Config::from_toml(text).expect_err("unknown symbol fails validation");
+        assert!(
+            err.to_string().contains("Faux"),
+            "error should name the offending symbol, got: {err}"
+        );
     }
 }

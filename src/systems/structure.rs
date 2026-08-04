@@ -9,6 +9,7 @@
 use crate::analysis::clusters;
 use crate::components::{AtomType, Position};
 use crate::config::Config;
+use crate::physics::forces::ElementTable;
 use crate::math::Vec3;
 use crate::physics::grid::Particle;
 use crate::scheduler::{Access, System, SystemContext};
@@ -59,7 +60,18 @@ impl System for StructureSystem {
             });
             types.push(*at);
         });
-        let c = clusters(&particles, &types, cfg.universe.size, crate::analysis::BOND_FACTOR);
+        let mut elements = ElementTable::default_table();
+        if let Err(sym) = elements.apply_overrides(&cfg.physics.elements) {
+            eprintln!("[genesis] invalid affinity table: {sym}");
+            return;
+        }
+        let c = clusters(
+            &particles,
+            &types,
+            cfg.universe.size,
+            crate::analysis::BOND_FACTOR,
+            &elements,
+        );
 
         if let Some(ss) = ctx.resources.get_mut::<StructureStats>() {
             ss.tick = ctx.time.tick;

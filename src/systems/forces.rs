@@ -37,7 +37,7 @@ use crate::config::Config;
 use crate::math::Vec3;
 use crate::physics::forces::{
     bond_harmonic_raw, coulomb_raw, equilibrium_distance, gravity_raw, smooth_cutoff, switched,
-    well_curvature, LjTable, LJ_CUTOFF_FACTOR,
+    well_curvature, ElementTable, LjTable, LJ_CUTOFF_FACTOR,
 };
 use crate::physics::grid::{min_image, Pair, Particle, SpatialGrid};
 use crate::scheduler::{Access, System, SystemContext};
@@ -98,10 +98,14 @@ pub struct ForceSystem {
 
 impl ForceSystem {
     pub fn new(cfg: &Config) -> Self {
-        let lj = LjTable::new(cfg.physics.thermal_constant, LJ_CUTOFF_FACTOR);
+        let mut elements = ElementTable::default_table();
+        if let Err(sym) = elements.apply_overrides(&cfg.physics.elements) {
+            panic!("[genesis] invalid affinity table: {sym}");
+        }
+        let lj = LjTable::new(&elements, cfg.physics.thermal_constant, LJ_CUTOFF_FACTOR);
         let max_sigma = AtomType::ALL
             .iter()
-            .map(|&t| crate::physics::forces::sigma(t))
+            .map(|&t| elements.sigma(t))
             .fold(0.0, f64::max);
         let lj_rc = lj.rc();
         let coulomb_rc = if cfg.systems.enable_electrostatics {
@@ -472,8 +476,11 @@ mod tests {
                 crate::components::Mass(AtomType::Carbon.mass()),
             );
         }
-        let lj =
-            crate::physics::forces::LjTable::new(u.config.physics.thermal_constant, LJ_CUTOFF_FACTOR);
+        let lj = crate::physics::forces::LjTable::new(
+            &crate::physics::forces::ElementTable::default_table(),
+            u.config.physics.thermal_constant,
+            LJ_CUTOFF_FACTOR,
+        );
         let p = lj.pair(AtomType::Carbon, AtomType::Carbon);
         let r_eq = equilibrium_distance(p.sigma);
 

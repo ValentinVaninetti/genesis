@@ -21,6 +21,7 @@
 
 use crate::components::AtomType;
 use crate::math::Vec3;
+use std::collections::HashMap;
 
 /// Lennard-Jones parameters of an element.
 #[derive(Debug, Clone, Copy)]
@@ -52,6 +53,118 @@ const ELEMENTS: [LjElement; AtomType::COUNT] = [
     LjElement { sigma: 1.9, epsilon_k: 350.0, charge: 1.0 },  // Fe
 ];
 
+/// The full per-species parameter table (σ, ε, charge) — the **affinity
+/// table** of the universe.
+///
+/// `ELEMENTS` above is the built-in default; a configuration can override any
+/// of its fields per element symbol. Everything the physics reads (LJ mixing,
+/// electrostatics, bond observation, binding energy) goes through this table,
+/// so tuning it populates the space of "materials" the universe can form
+/// spontaneously. It is still a set of law constants per species, never a
+/// programmed bond.
+#[derive(Debug, Clone)]
+pub struct ElementTable {
+    elements: [LjElement; AtomType::COUNT],
+}
+
+/// Per-species override of the affinity table from the configuration, keyed by
+/// element symbol (e.g. `Na = { sigma = 2.2, epsilon_k = 130.0, charge = 1.0 }`).
+/// Only the fields present are changed; the rest keep the built-in default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", default)]
+pub struct ElementOverride {
+    pub sigma: Option<f64>,
+    pub epsilon_k: Option<f64>,
+    pub charge: Option<f64>,
+}
+
+impl ElementTable {
+    /// The built-in table.
+    pub const fn default_table() -> Self {
+        Self { elements: ELEMENTS }
+    }
+
+    /// Applies configuration overrides (symbol → fields). Returns
+    /// `Err(symbol)` when an override names an unknown element, so a typo
+    /// fails fast instead of silently tuning nothing.
+    pub fn apply_overrides(
+        &mut self,
+        overrides: &HashMap<String, ElementOverride>,
+    ) -> Result<(), &'static str> {
+        for (symbol, o) in overrides {
+            let t = crate::components::AtomType::by_name(symbol)
+                .ok_or("unknown element symbol in affinity table")?;
+            let e = &mut self.elements[element_index(t)];
+            if let Some(s) = o.sigma {
+                e.sigma = s;
+            }
+            if let Some(ek) = o.epsilon_k {
+                e.epsilon_k = ek;
+            }
+            if let Some(c) = o.charge {
+                e.charge = c;
+            }
+        }
+        Ok(())
+    }
+
+    /// `σ` of an element.
+    pub fn sigma(&self, t: AtomType) -> f64 {
+        self.elements[element_index(t)].sigma
+    }
+
+    /// `ε` of an element (kelvin).
+    pub fn epsilon(&self, t: AtomType) -> f64 {
+        self.elements[element_index(t)].epsilon_k
+    }
+
+    /// Net charge of an element (elementary charges).
+    pub fn charge(&self, t: AtomType) -> f64 {
+        self.elements[element_index(t)].charge
+    }
+
+    /// Lorentz–Berthelot mixing of σ for a pair.
+    pub fn mix_sigma(&self, a: AtomType, b: AtomType) -> f64 {
+        0.5 * (self.sigma(a) + self.sigma(b))
+    }
+
+    /// Lorentz–Berthelot mixing of ε for a pair, in energy units.
+    pub fn mix_epsilon(&self, thermal_constant: f64, a: AtomType, b: AtomType) -> f64 {
+        thermal_constant * (self.epsilon(a) * self.epsilon(b)).sqrt()
+    }
+}
+
+impl Default for ElementTable {
+    fn default() -> Self {
+        Self::default_table()
+    }
+}
+
+/// Range `σ` of an element (simulation units), from the built-in table.
+pub fn sigma(t: AtomType) -> f64 {
+    ElementTable::default_table().sigma(t)
+}
+
+/// Depth `ε` of an element (kelvin), from the built-in table.
+pub fn epsilon(t: AtomType) -> f64 {
+    ElementTable::default_table().epsilon(t)
+}
+
+/// Net charge of an element (elementary charges), from the built-in table.
+pub fn charge(t: AtomType) -> f64 {
+    ElementTable::default_table().charge(t)
+}
+
+/// Lorentz–Berthelot mixing of σ for a pair (same rule as `LjTable::new`).
+pub fn mix_sigma(a: AtomType, b: AtomType) -> f64 {
+    ElementTable::default_table().mix_sigma(a, b)
+}
+
+/// Lorentz–Berthelot mixing of ε for a pair, in energy units.
+pub fn mix_epsilon(thermal_constant: f64, a: AtomType, b: AtomType) -> f64 {
+    ElementTable::default_table().mix_epsilon(thermal_constant, a, b)
+}
+
 /// Cutoff distance in multiples of `σ`: beyond it there is no interaction.
 pub const LJ_CUTOFF_FACTOR: f64 = 2.5;
 
@@ -73,31 +186,6 @@ pub fn element_index(t: AtomType) -> usize {
         AtomType::Sulfur => 8,
         AtomType::Iron => 9,
     }
-}
-
-/// Range `σ` of an element (simulation units).
-pub fn sigma(t: AtomType) -> f64 {
-    ELEMENTS[element_index(t)].sigma
-}
-
-/// Depth `ε` of an element (kelvin).
-pub fn epsilon(t: AtomType) -> f64 {
-    ELEMENTS[element_index(t)].epsilon_k
-}
-
-/// Net charge of an element (elementary charges).
-pub fn charge(t: AtomType) -> f64 {
-    ELEMENTS[element_index(t)].charge
-}
-
-/// Lorentz–Berthelot mixing of σ for a pair (same rule as `LjTable::new`).
-pub fn mix_sigma(a: AtomType, b: AtomType) -> f64 {
-    0.5 * (sigma(a) + sigma(b))
-}
-
-/// Lorentz–Berthelot mixing of ε for a pair, in energy units.
-pub fn mix_epsilon(thermal_constant: f64, a: AtomType, b: AtomType) -> f64 {
-    thermal_constant * (epsilon(a) * epsilon(b)).sqrt()
 }
 
 /// Second derivative of the LJ potential at its minimum `r_m = σ·2^(1/6)`:
@@ -130,15 +218,13 @@ pub struct LjTable {
 
 impl LjTable {
     /// Builds the table with the mixing rules and prepares the smooth switch
-    /// between `r_on` and `rc`.
-    pub fn new(thermal_constant: f64, cutoff_factor: f64) -> Self {
-        let n = AtomType::COUNT;
+    /// between `r_on` and `rc`. Uses the given element table (default or
+    /// config-overridden).
+    pub fn new(elements: &ElementTable, thermal_constant: f64, cutoff_factor: f64) -> Self {
         let mut max_sigma = 0.0f64;
         let mut pair = [[LjPair { sigma: 1.0, epsilon: 0.0 }; AtomType::COUNT]; AtomType::COUNT];
-        for i in 0..n {
-            for j in 0..n {
-                let a = ELEMENTS[i];
-                let b = ELEMENTS[j];
+        for (i, a) in elements.elements.iter().enumerate() {
+            for (j, b) in elements.elements.iter().enumerate() {
                 let sigma = 0.5 * (a.sigma + b.sigma);
                 let epsilon = thermal_constant * (a.epsilon_k * b.epsilon_k).sqrt();
                 max_sigma = max_sigma.max(sigma);
@@ -270,7 +356,9 @@ pub fn lj_raw(p: LjPair, r: f64) -> (f64, f64) {
 /// Lennard-Jones term plus, if enabled, the Coulomb and harmonic-bond terms —
 /// the same laws the force pass composes. Negative means bound (attractive).
 /// It is an observation lens for the chemical aggregates, not a law.
+#[allow(clippy::too_many_arguments)]
 pub fn pair_potential_raw(
+    elements: &ElementTable,
     thermal_constant: f64,
     a: AtomType,
     b: AtomType,
@@ -279,12 +367,12 @@ pub fn pair_potential_raw(
     with_coulomb: bool,
     with_bond: bool,
 ) -> f64 {
-    let sig = mix_sigma(a, b);
-    let eps = mix_epsilon(thermal_constant, a, b);
+    let sig = elements.mix_sigma(a, b);
+    let eps = elements.mix_epsilon(thermal_constant, a, b);
     let (_, v) = lj_raw(LjPair { sigma: sig, epsilon: eps }, r);
     let mut total = v;
     if with_coulomb {
-        let q = k_e * charge(a) * charge(b);
+        let q = k_e * elements.charge(a) * elements.charge(b);
         total += q / r;
     }
     if with_bond {
@@ -300,7 +388,7 @@ mod tests {
     use super::*;
 
     fn table() -> LjTable {
-        LjTable::new(0.01, LJ_CUTOFF_FACTOR)
+        LjTable::new(&ElementTable::default_table(), 0.01, LJ_CUTOFF_FACTOR)
     }
 
     #[test]
@@ -371,7 +459,8 @@ mod tests {
     }
 
     #[test]
-    fn switch_vanishes_at_cutoff() {        let t = table();
+    fn switch_vanishes_at_cutoff() {
+        let t = table();
         let p = t.pair(AtomType::Oxygen, AtomType::Oxygen);
         let r = t.rc();
         assert!(r > p.sigma);
@@ -474,5 +563,63 @@ mod tests {
         assert_eq!(charge(AtomType::Oxygen), -1.0);
         assert_eq!(charge(AtomType::Hydrogen), 0.0);
         assert_eq!(charge(AtomType::Helium), 0.0);
+    }
+
+    #[test]
+    fn affinity_table_overrides_change_lj_potential() {
+        let mut elements = ElementTable::default_table();
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "Na".to_string(),
+            ElementOverride {
+                sigma: Some(1.0),
+                epsilon_k: Some(50.0),
+                charge: None,
+            },
+        );
+        elements.apply_overrides(&overrides).unwrap();
+        assert_eq!(elements.sigma(AtomType::Sodium), 1.0);
+        assert_eq!(elements.epsilon(AtomType::Sodium), 50.0);
+
+        // The LjTable built on the overridden table resolves to the new σ/ε.
+        let t = LjTable::new(&elements, 0.01, LJ_CUTOFF_FACTOR);
+        let p = t.pair(AtomType::Sodium, AtomType::Sodium);
+        assert_eq!(p.sigma, 1.0);
+        assert!((p.epsilon - 0.5).abs() < 1e-12, "ε_NaNa = 0.01·√(50·50)");
+
+        // The potential minimum now sits at r = σ·2^(1/6) = 1.12, far from
+        // the default-table position (σ_Na = 2.2): the override moved it.
+        let (_, v) = lj_raw(p, p.sigma * 2.0f64.powf(1.0 / 6.0));
+        assert!((v + p.epsilon).abs() < 1e-12 * p.epsilon);
+    }
+
+    #[test]
+    fn affinity_table_override_keeps_unmentioned_fields() {
+        let mut elements = ElementTable::default_table();
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "O".to_string(),
+            ElementOverride {
+                sigma: None,
+                epsilon_k: None,
+                charge: Some(-2.0),
+            },
+        );
+        elements.apply_overrides(&overrides).unwrap();
+        assert_eq!(elements.charge(AtomType::Oxygen), -2.0);
+        // σ and ε untouched.
+        assert_eq!(elements.sigma(AtomType::Oxygen), sigma(AtomType::Oxygen));
+        assert_eq!(elements.epsilon(AtomType::Oxygen), epsilon(AtomType::Oxygen));
+    }
+
+    #[test]
+    fn affinity_table_rejects_unknown_symbol() {
+        let mut elements = ElementTable::default_table();
+        let mut overrides = HashMap::new();
+        overrides.insert("Xx".to_string(), ElementOverride::default());
+        let err = elements.apply_overrides(&overrides);
+        assert!(err.is_err(), "unknown symbol must fail fast");
+        // No partial application: the table is untouched.
+        let _ = elements.sigma(AtomType::Hydrogen);
     }
 }

@@ -13,7 +13,7 @@
 use crate::components::{AtomType, Position};
 use crate::ecs::{EntityId, World};
 use crate::math::Vec3;
-use crate::physics::forces::{mix_sigma, sigma};
+use crate::physics::forces::ElementTable;
 use crate::physics::grid::{min_image, Particle, SpatialGrid};
 use std::collections::{HashMap, HashSet};
 
@@ -109,16 +109,21 @@ impl PairTracker {
 }
 
 /// The binding cutoff of `k_bind` σ_ij, in simulation units.
-pub fn bind_cutoff(k_bind: f64) -> f64 {
-    k_bind * AtomType::ALL.iter().map(|&t| sigma(t)).fold(0.0, f64::max)
+pub fn bind_cutoff(elements: &ElementTable, k_bind: f64) -> f64 {
+    k_bind * AtomType::ALL.iter().map(|&t| elements.sigma(t)).fold(0.0, f64::max)
 }
 
 /// Candidate bound pairs of the current state: `r < k_bind · σ_ij`, with the
 /// mixed `σ_ij` per pair and the spatial grid as broad-phase.
-pub fn collect_bound_pairs(world: &World, world_size: Vec3, k_bind: f64) -> Vec<BoundPair> {
-    let cutoff = bind_cutoff(k_bind);
+pub fn collect_bound_pairs(
+    world: &World,
+    world_size: Vec3,
+    k_bind: f64,
+    elements: &ElementTable,
+) -> Vec<BoundPair> {
+    let cutoff = bind_cutoff(elements, k_bind);
     let mut grid = SpatialGrid::new(world_size, cutoff);
-    bound_pairs_with_grid(world, world_size, k_bind, &mut grid)
+    bound_pairs_with_grid(world, world_size, k_bind, &mut grid, elements)
 }
 
 /// Same as [`collect_bound_pairs`] but reusing the caller's grid and buffers
@@ -129,8 +134,9 @@ pub fn bound_pairs_with_grid(
     world_size: Vec3,
     k_bind: f64,
     grid: &mut SpatialGrid,
+    elements: &ElementTable,
 ) -> Vec<BoundPair> {
-    let cutoff = bind_cutoff(k_bind);
+    let cutoff = bind_cutoff(elements, k_bind);
 
     let mut particles: Vec<Particle> = Vec::with_capacity(world.len());
     let mut types: Vec<AtomType> = Vec::with_capacity(world.len());
@@ -154,7 +160,7 @@ pub fn bound_pairs_with_grid(
     for pair in candidates {
         let (pa, pb) = (&particles[pair.a], &particles[pair.b]);
         let d = min_image(pa.pos - pb.pos, world_size).length();
-        let threshold = k_bind * mix_sigma(types[pair.a], types[pair.b]);
+        let threshold = k_bind * elements.mix_sigma(types[pair.a], types[pair.b]);
         if d < threshold {
             let mut a = ids[&pa.index];
             let mut b = ids[&pb.index];
@@ -194,7 +200,10 @@ mod tests {
             (Vec3::new(0.0, 0.0, 0.0), AtomType::Hydrogen),
             (Vec3::new(2.0, 0.0, 0.0), AtomType::Hydrogen),
         ]);
-        assert_eq!(collect_bound_pairs(&w, size, DEFAULT_K_BIND).len(), 1);
+        assert_eq!(
+            collect_bound_pairs(&w, size, DEFAULT_K_BIND, &ElementTable::default_table()).len(),
+            1
+        );
 
         // The same absolute 3.3 distance is bound for Si–Si (σ = 2.3,
         // threshold 3.45) but NOT for H–H (threshold 2.4): the threshold
@@ -203,12 +212,18 @@ mod tests {
             (Vec3::new(0.0, 0.0, 0.0), AtomType::Silicon),
             (Vec3::new(3.3, 0.0, 0.0), AtomType::Silicon),
         ]);
-        assert_eq!(collect_bound_pairs(&si, size, DEFAULT_K_BIND).len(), 1);
+        assert_eq!(
+            collect_bound_pairs(&si, size, DEFAULT_K_BIND, &ElementTable::default_table()).len(),
+            1
+        );
         let h = world_with(&[
             (Vec3::new(0.0, 0.0, 0.0), AtomType::Hydrogen),
             (Vec3::new(3.3, 0.0, 0.0), AtomType::Hydrogen),
         ]);
-        assert_eq!(collect_bound_pairs(&h, size, DEFAULT_K_BIND).len(), 0);
+        assert_eq!(
+            collect_bound_pairs(&h, size, DEFAULT_K_BIND, &ElementTable::default_table()).len(),
+            0
+        );
     }
 
     #[test]

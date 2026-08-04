@@ -40,10 +40,22 @@ pub struct Universe {
     pub resources: Resources,
     pub scheduler: Scheduler,
     pub stats: StatsCollector,
+    /// Resolved affinity table (built-in defaults + config overrides). Owned
+    /// once here so every system and lens uses the same physical parameters.
+    pub elements: crate::physics::forces::ElementTable,
     last_tick: Instant,
 }
 
 impl Universe {
+    /// Builds the affinity table from the config, panicking only on an
+    /// unvalidated config (all real paths validate at parse time).
+    fn affinity_table(config: &Config) -> crate::physics::forces::ElementTable {
+        let mut elements = crate::physics::forces::ElementTable::default_table();
+        if let Err(sym) = elements.apply_overrides(&config.physics.elements) {
+            panic!("[genesis] invalid affinity table: {sym}");
+        }
+        elements
+    }
     /// Creates a new universe from the configuration and seeds the initial
     /// population of atoms.
     pub fn new(config: Config) -> Self {
@@ -72,6 +84,7 @@ impl Universe {
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
 
+        let elements = Self::affinity_table(&config);
         let mut universe = Self {
             config,
             time,
@@ -80,6 +93,7 @@ impl Universe {
             resources,
             scheduler,
             stats: StatsCollector::new(stats_cap),
+            elements,
             last_tick: Instant::now(),
         };
         universe.seed_atoms();
@@ -109,6 +123,7 @@ impl Universe {
         let mut scheduler = Scheduler::new();
         build_schedule(&mut scheduler, &config);
 
+        let elements = Self::affinity_table(&config);
         Self {
             config,
             time: state.time,
@@ -117,6 +132,7 @@ impl Universe {
             resources,
             scheduler,
             stats: state.stats,
+            elements,
             last_tick: Instant::now(),
         }
     }
@@ -243,7 +259,7 @@ impl Universe {
         self.world.insert::<AtomType>(e, at);
         self.world.insert::<Mass>(e, Mass(at.mass()));
         self.world
-            .insert::<Charge>(e, Charge(crate::physics::forces::charge(at)));
+            .insert::<Charge>(e, Charge(self.elements.charge(at)));
         self.world.insert::<Bonds>(e, Bonds::default());
 
         let sigma = (k * temp / at.mass()).sqrt();
@@ -307,6 +323,7 @@ impl Universe {
             &types,
             self.config.universe.size,
             crate::analysis::BOND_FACTOR,
+            &self.elements,
         )
     }
 

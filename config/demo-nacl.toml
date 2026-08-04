@@ -26,6 +26,15 @@ gravity_constant = 6.674e-11
 coulomb_constant = 1.0
 coulomb_cutoff = 2.5
 
+# Affinity table: per-element σ, ε (kelvin) and charge. The demo relies on the
+# built-in defaults (Na σ=2.2, O σ=2.9, charges +1/−1), so nothing needs to be
+# set — the block below shows how to override a "material": make Na smaller and
+# much stickier, or neutralize O to kill ionic bonds. Missing fields keep the
+# default; an unknown symbol fails at load.
+# [physics.elements]
+# Na = { sigma = 2.2, epsilon_k = 130.0, charge = 1.0 }
+# O = { epsilon_k = 70.0 }
+
 [systems]
 enable_movement = true
 enable_boundaries = true

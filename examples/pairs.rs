@@ -79,7 +79,12 @@ fn main() {
     let mut tracker = PairTracker::new(1);
     for tick in 1..=ticks {
         universe.tick();
-        let bound = collect_bound_pairs(&universe.world, universe.config.universe.size, DEFAULT_K_BIND);
+        let bound = collect_bound_pairs(
+            &universe.world,
+            universe.config.universe.size,
+            DEFAULT_K_BIND,
+            &universe.elements,
+        );
         tracker.track_tick(&bound);
         if tick % 1_000 == 0 {
             println!(
